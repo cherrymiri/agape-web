@@ -1,0 +1,4 @@
+const {serve,launch}=require('./lib.cjs');
+(async()=>{const s=serve(),b=await launch();const c=await b.newContext({viewport:{width:1280,height:720},deviceScaleFactor:1.5});const pg=await c.newPage();await pg.goto('http://localhost:8766/?debug&tier=1');await pg.waitForFunction('window.__ready',{timeout:90000});
+const box=await pg.evaluate(()=>{const A=__agape,G=A.garden;A.toggleWand();A.step(3);G.flowers.forEach((f,i)=>{if(i<14){f.opening=true;f.bloom=1e9;f.bt=1e9*(.05+.066*i)}});G.update(.001);A.bubbles.list.length;A.draw();return 1});
+await pg.waitForTimeout(800);await pg.evaluate(()=>{document.querySelectorAll('#hint,#note,#micBtn,#setBtn').forEach(e=>e.style.display='none');__agape.step(.02);__agape.draw();__agape.renderer.setAnimationLoop(null);__agape.draw()});await pg.waitForTimeout(200);await pg.screenshot({path:'tests/zoom9.png',clip:{x:120,y:300,width:760,height:300}});await b.close();s.close()})();

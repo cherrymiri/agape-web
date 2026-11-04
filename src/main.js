@@ -8,7 +8,7 @@ import { createGlassMaterials, createWandMaterial, createGlassEnvironment, apply
 import { BreathMic } from './breath.js';
 import { Bubbles, CONFIG } from './bubbles.js';
 import { Quality, TIERS } from './quality.js';
-import { Garden, GARDEN } from './garden.js';
+import { Garden } from './garden.js';
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -37,7 +37,7 @@ function buildPipeline() {
     composer = new EffectComposer(renderer, rt);
     composer.addPass(new RenderPass(scene, camera));
     // 화면 절반 해상도로 빛번짐 계산
-    bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), .17, .5, .82);
+    bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), .13, .55, .84);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
   }
@@ -54,30 +54,29 @@ function fit() {
   composer?.setSize(w, h); composer?.setPixelRatio?.(pixelRatio());
   camera.aspect = a; camera.updateProjectionMatrix();
   const portrait = a < .85;
-  const D = Math.max(3.25 / tan, 3.4 / (tan * a));
+  const D = Math.max(3 / tan, 2.75 / (tan * a));
   const halfH = D * tan;
-  view.garden.at.set(0, halfH * .78 - .45, 0);
+  view.garden.at.set(0, halfH * .62 + .1, 0);
   view.garden.pos.set(0, view.garden.at.y + D * .2, D);
-  view.ringNdc.set(portrait ? .34 : .4, portrait ? .38 : .42);   // 화면 오른쪽 약 65~75% 지점
+  view.ringNdc.set(portrait ? .58 : .7, portrait ? .3 : .34);    // 화면 오른쪽, 꽃보다 위
   updateUpPose();
   // 놓인 막대: 오른쪽 아래, 꽃봉오리 앞
-  const v = new THREE.Vector3(portrait ? .52 : .6, portrait ? -.74 : -.6, .5).unproject(camera).sub(camera.position).normalize();
+  const v = new THREE.Vector3(portrait ? .66 : .78, portrait ? -.02 : -.1, .5).unproject(camera).sub(camera.position).normalize();
   POSE.rest.p.copy(camera.position).addScaledVector(v, (3.2 - camera.position.z) / v.z);
-  view.bubbleK = portrait ? .66 : .8;
+  view.bubbleK = portrait ? .5 : .58;
   camera.position.copy(view.garden.pos); camera.lookAt(view.garden.at); camAt.copy(view.garden.at);
   lights();
 }
 function lights() { if (garden) garden.lights.mat.uniforms.uScale.value = innerHeight * renderer.getPixelRatio() / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))); }
 function layoutGarden() {
   const portrait = innerHeight > innerWidth;
-  garden.layout(portrait ? 2.7 : Math.min(5.6, 5.6 * camera.aspect / 1.6), portrait ? 6.8 : 3.6);
-  garden.needK = (+params.get('need') || 1) * (portrait ? .84 : 1);
+  garden.layout(portrait ? 2.2 : Math.min(3.15, 3.15 * camera.aspect / 1.6), portrait ? 2 : 1.75, portrait ? 0 : -.75);
   garden.plantAll();
 }
 /** 다 핀 꽃들이 화면 중심에 오도록 엔딩 구도를 계산. 문구 자리는 위쪽에 남김 */
 function solveEnd() {
   const portrait = camera.aspect < .85, pts = [], flowers = garden.slots;
-  for (const s of flowers) for (const dx of [-.62, .62]) for (const dy of [0, 1.42]) pts.push(new THREE.Vector3(s.x + dx, s.y + dy, s.z));
+  for (const s of flowers) for (const dx of [-.38, .38]) for (const dy of [0, .86]) pts.push(new THREE.Vector3(s.x + dx, s.y + dy, s.z));
   const box = new THREE.Box3().setFromPoints(pts), c = box.getCenter(new THREE.Vector3());
   const yHi = portrait ? .4 : .36, yLow = portrait ? -.8 : -.84, xLim = .92;
   const el = THREE.MathUtils.degToRad(portrait ? 23 : 12), dir = new THREE.Vector3(0, Math.sin(el), Math.cos(el));
@@ -98,7 +97,7 @@ function solveEnd() {
 }
 
 // ─── 막대 ────────────────────────────────────────────
-const W = 1.6;                                   // 막대 표시 배율(균일). 형태는 그대로
+const W = 1;                                   // 막대 표시 배율(균일). 형태는 그대로
 const RING_R = .312;
 const wand = new THREE.Group();
 wand.scale.setScalar(W); scene.add(wand);
@@ -217,9 +216,10 @@ $('againBtn').onclick = resetAll;
 // ─── 엔딩과 초기화 ─────────────────────────────────────
 // 20번째 꽃이 완전히 피는 순간 시작. 막대 퇴장·카메라·마지막 방울이 동시에 진행됨
 function startEnding() {
+  $('note').classList.remove('on');
   S.phase = 'ending'; S.endT = 0; S.exitT = 0; hint(''); syncUi();
   view.endFrom = camera.position.clone(); view.endAtFrom = camAt.clone();
-  view.exitX = 7 + (camera.position.z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
+  view.exitX = 4 + (camera.position.z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
   solveEnd(); bubbles.settle();
 }
 function resetAll() {
@@ -231,11 +231,9 @@ function resetAll() {
 }
 
 // ─── 프레임 ──────────────────────────────────────────
-const END_TEXT_AT = 3.6;                         // 마지막 꽃 개화 후 문구가 나타나기까지 (초)
-const END_CAMERA_TIME = 3;                     // 카메라가 정원 구도로 옮겨 가는 시간 (초)
+const END_TEXT_AT = 2.8;                         // 마지막 꽃 개화 후 문구가 나타나기까지 (초)
+const END_CAMERA_TIME = 2.6;                     // 카메라가 정원 구도로 옮겨 가는 시간 (초)
 const WAND_EXIT_TIME = 1.5;                      // 막대가 오른쪽으로 물러나는 시간 (초). 이 동안 방울이 계속 나옴
-const QUIET_BEFORE_END = 2;                      // 정원이 자란 뒤 숨이 이만큼 멎으면 엔딩 (초)
-const READY_MAX_WAIT = 12;                       // 계속 불고 있어도 이 시간이 지나면 막대가 천천히 물러남 (초)
 const AFTERBREATH = .6;                          // 입력이 없어도 퇴장 중 이어지는 마지막 숨의 세기
 const camAt = new THREE.Vector3(), haloTmp = new THREE.Vector3();
 function step(dt) {
@@ -274,15 +272,11 @@ function step(dt) {
     active: (S.phase === 'play' || exiting) && S.up && S.lift > .96, lift: S.lift, camera, maxBubbles: quality.t.bubbles,
     garden, portraitK: view.bubbleK,
   });
-  garden.update(dt, S.phase === 'ending');
+  garden.update(dt);
   if (S.phase === 'play') {
     if (bubbles.stats.born) S.playT += dt;
-    // 체험 중 문구: 닿는 모습과 떠나는 모습을 어느 정도 본 뒤 한 번만
-    if (S.noteT < 0 && bubbles.stats.hits >= 6 && bubbles.stats.flew >= 2) { S.noteT = 0; $('note').classList.add('on'); }
-    if (S.noteT >= 0 && S.noteT < 7.5) { S.noteT += dt; if (S.noteT >= 7) $('note').classList.remove('on'); }
-    // 엔딩 판단: 정원이 충분히 자랐고, 관람객의 숨이 잦아들었을 때. 계속 불고 있으면 기다림
-    S.quietT = input > 0 ? 0 : S.quietT + dt;
-    if (garden.ready) { S.readyT += dt; if (S.quietT > QUIET_BEFORE_END || S.readyT > READY_MAX_WAIT) startEnding(); }
+    if (S.up && S.noteT < 0) { S.noteT = 0; $('note').classList.add('on'); }   // 체험 중 상시 문구
+    if (garden.ready) startEnding();                  // 30송이가 모두 피면 바로 엔딩
   }
   if (S.phase === 'ending' && S.exitT >= 1 && !bubbles.buds.length) bubbles.hideRing();
   if (!S.blown && bubbles.stats.born) { S.blown = true; hint(''); }

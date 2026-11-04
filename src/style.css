@@ -16,6 +16,8 @@ html,body{height:100%;margin:0;background:var(--void);color:var(--milk);font-fam
 #lead{margin-top:clamp(20px,4vh,36px)!important;color:#e4e8fa!important;font-size:clamp(17px,2vw,24px)!important;letter-spacing:.1em!important;text-indent:.1em!important;filter:drop-shadow(0 0 10px #b8c0ff40)}
 #note{position:fixed;left:24px;right:24px;top:calc(env(safe-area-inset-top,0px) + 6vh);margin:0;text-align:center;color:#d9def5;font-size:clamp(14px,1.6vw,18px);letter-spacing:.05em;word-break:keep-all;line-height:1.6;pointer-events:none;opacity:0;transition:opacity 1.8s ease;filter:drop-shadow(0 0 9px #b8c0ff33)}
 #note.on{opacity:1}
+#note .main{display:block;color:#f0f3ff;font-size:clamp(16px,1.8vw,21px);margin-bottom:5px}
+#note .sub{display:block;color:#c5cde9;font-size:clamp(12px,1.25vw,15px)}
 #actions{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 28px);display:flex;justify-content:center;gap:10px;flex-wrap:wrap;padding-inline:72px;pointer-events:none}
 button{font:inherit;color:var(--milk);background:var(--plate);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:999px;padding:10px 20px;min-height:42px;font-size:15px;letter-spacing:.05em;cursor:pointer;pointer-events:auto;touch-action:manipulation;transition:background .3s,border-color .3s}
 button:hover{border-color:#ffffff70}

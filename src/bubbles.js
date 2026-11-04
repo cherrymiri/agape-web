@@ -12,8 +12,8 @@ export const CONFIG = {
   sizeMin: .06,        // 방울 반지름 범위 (꽃 머리 지름 ≈ 1)
   sizeMax: 1.3,
   maxBuds: 5,          // 고리에서 동시에 부풀 수 있는 방울 수
-  density: .52,        // 전체 생성 밀도 배율
-  seekDelay: [.2, 2.4],  // 태어난 뒤 꽃 쪽으로 기울기 시작하는 시간 범위(초)
+  density: .3,        // 전체 생성 밀도 배율
+  seekDelay: [.15, 1.8],  // 태어난 뒤 꽃 쪽으로 기울기 시작하는 시간 범위(초)
 };
 
 const rnd = (a = 1, b) => b === undefined ? Math.random() * a : a + Math.random() * (b - a);
@@ -212,7 +212,7 @@ export class Bubbles {
       const nx = this.ndc.x, ny = this.ndc.y, depth = Math.max(camera.position.distanceTo(p), 1);
       const hh = depth * Math.tan(camera.fov * Math.PI / 360), hw = hh * camera.aspect;
       if (b.fate === 'seek') {                                 // 꽃을 향하는 방울은 화면 안에 머무름
-        const mx = 1 - (b.r + .15) / hw, my = 1 - (b.r + .15) / hh;
+        const mx = 1 - (b.r + .15) / hw, my = Math.min(1 - (b.r + .15) / hh, .66);   // 위쪽 문구를 가리지 않음
         const zone = mx - .16;                                 // 벽 근처에서 부드럽게 속도를 줄이고 되돌림
         if (Math.abs(nx) > zone) {
           const e = (Math.abs(nx) - zone) / .16, sx = Math.sign(nx);
@@ -235,7 +235,7 @@ export class Bubbles {
       }
       if (b.pop < 0 && b.close >= 1 && b.age > .5) {
         const f = garden.touching(p, b.r, b.target);
-        if (f) { b.pop = 0; garden.burst(p, b.r, f, this.fitK / .8); this.stats.hits++; }   // 닿는 순간 비눗막이 물방울이 됨
+        if (f) { b.pop = 0; garden.burst(p, b.r, f); this.stats.hits++; }   // 닿는 순간 비눗막이 물방울이 됨
       }
       if (b.pop >= 0) {
         b.pop += dt / (.2 + .26 * Math.min(b.r, 1)); u.uPop.value = Math.min(b.pop, 1);

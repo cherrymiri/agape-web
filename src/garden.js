@@ -4,30 +4,34 @@ import { GLASS_KEYS, applyGlass } from './glass_materials.js';
 
 // 정원 설정
 export const GARDEN = {
-  count: 22,                 // 꽃 수 (주소 ?count=)
-  need: [1.7, 3],             // 한 송이가 다 피는 데 필요한 수분량 범위 (클수록 체험이 길어짐, 주소 ?need=1.2 배율)
-  bud: [1.35, 1.74],           // 꽃봉오리로 쓰는 Bloom 재생 위치(초). 이 구간은 꽃잎이 닫혀 있음
-  zones: { center: .4, side: .3 },
-  readyFull: .85,            // 이 비율의 꽃이 다 피면 '충분히 자란 정원'
-  readyAvg: .93,             // 전체 평균 성장도 기준
+  count: 30,                 // 꽃 수 (주소 ?count=). 전부 피면 엔딩
+  scale: [.5, .6],           // 꽃 크기 배율 (형태는 그대로, 균일 축소)
+  stem: [1.2, 1.5],          // 봉오리일 때의 줄기: Bloom 재생 위치(초). 작을수록 짧음
+  pearl: .078,               // 진주 봉오리 반지름
+  bloom: [2.2, 3.1],         // 비눗방울이 닿은 뒤 다 피기까지(초)
+  zones: { center: .46, side: .27 },
+  // 재질 비중: 흰빛·연보라·진주빛 중심, 따뜻한 발광은 드물게
+  mats: { aurora: 10, pearl: 9, milky: 8, glow: 3 },
+  glowDim: .62,              // 발광 유리의 밝기 배율 (전체 색감 맞춤)
 };
 
 export const hill = z => .24 * Math.max(0, -z);   // 보이는 바닥은 없고, 뒤쪽 꽃이 조금 높이 놓이는 깊이감만 남음
 const KEYS = 'ABCDE'.split('');
-const HALO = { aurora: [.62, .58, 1], pearl: [1, .78, .92], milky: [.82, .82, 1], glow: [1, .72, .42] };
+const HALO = { aurora: [.62, .62, 1], pearl: [.92, .8, 1], milky: [.82, .84, 1], glow: [1, .84, .78] };
 
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
 /** 20가지 조합이 고르게 나오도록 섞은 주머니에서 하나씩 뽑음 */
 export class ComboBag {
-  constructor() { this.bag = []; this.last = null; }
+  constructor() { this.bag = []; }
   next() {
     if (!this.bag.length) {
-      for (const k of KEYS) for (const m of GLASS_KEYS) this.bag.push([k, m]);
-      shuffle(this.bag);
-      if (this.last && this.bag.at(-1)[0] === this.last[0]) this.bag.unshift(this.bag.pop());
+      const ms = []; for (const m in GARDEN.mats) for (let i = 0; i < GARDEN.mats[m]; i++) ms.push(m);
+      shuffle(ms);
+      const ks = []; while (ks.length < ms.length) ks.push(...shuffle([...KEYS]));
+      this.bag = ms.map((m, i) => [ks[i], m]);
     }
-    return this.last = this.bag.pop();
+    return this.bag.pop();
   }
 }
 
@@ -72,13 +76,13 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 
 /** 꽃마다 재질 복제본. 뿌리 쪽이 어둠 속으로 사라지게 하고(바닥 없음), 성장에 따라 빛이 살아남 */
 function flowerMaterial(base, rootY) {
-  const m = base.clone(), u = { value: rootY };
+  const m = base.clone(), u = { value: rootY };   // 뿌리가 어둠 속으로 사라짐
   m.onBeforeCompile = sh => {
     sh.uniforms.uRootY = u;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vWY;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvWY = (modelMatrix * vec4(transformed, 1.)).y;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uRootY; varying float vWY;')
-      .replace('#include <dithering_fragment>', '#include <dithering_fragment>\ngl_FragColor.a *= smoothstep(uRootY + .02, uRootY + .36, vWY);');
+      .replace('#include <dithering_fragment>', '#include <dithering_fragment>\ngl_FragColor.a *= smoothstep(uRootY, uRootY + .05, vWY);');
   };
   m.customProgramCacheKey = () => 'rootfade';
   return m;
@@ -105,129 +109,151 @@ class Drops {
   clear() { this.list = []; this.mesh.count = 0; }
 }
 
+/** 진주 봉오리: 짧은 줄기 끝의 작은 빛방울. 잎 없음. 전부 한 번의 드로우 */
+class Pearls {
+  constructor(scene, cap = 120) {
+    const pts = []; const N = 18;
+    for (let i = 0; i <= N; i++) {               // 끝이 살짝 모인 물방울 윤곽
+      const t = i / N, a = Math.PI * t, w = Math.sin(a) * (.8 + .2 * t) * (1 - .2 * (1 - t) ** 3);
+      pts.push(new THREE.Vector2(Math.max(w, 1e-3), 1.28 * Math.cos(a) + .1));
+    }
+    const g = new THREE.LatheGeometry(pts, 20);
+    this.mat = new THREE.MeshPhysicalMaterial({ name: 'PEARL_Bud', color: 0xf3f0fb, roughness: .22, clearcoat: 1, clearcoatRoughness: .08,
+      iridescence: 1, iridescenceIOR: 1.5, iridescenceThicknessRange: [300, 460], emissive: 0xd9d6f6, emissiveIntensity: .34, envMapIntensity: 1.3 });
+    this.mesh = new THREE.InstancedMesh(g, this.mat, cap); this.mesh.frustumCulled = false; this.mesh.count = 0; scene.add(this.mesh);
+    this.m = new THREE.Matrix4(); this.s = new THREE.Vector3(); this.q = new THREE.Quaternion();
+  }
+}
+
 export class Garden {
   constructor(scene, protos, mats) {
-    this.scene = scene; this.protos = protos; this.mats = mats; this.goal = GARDEN.count; this.needK = 1;
-    this.lights = new Lights(scene); this.drops = new Drops(scene);
+    this.scene = scene; this.protos = protos; this.mats = mats; this.goal = GARDEN.count;
+    this.lights = new Lights(scene); this.drops = new Drops(scene); this.pearls = new Pearls(scene);
     this.group = new THREE.Group(); scene.add(this.group);
     this.flowers = []; this.slots = []; this.bag = new ComboBag(); this.counts = {}; this.clock = 0;
   }
   reset() {
     for (const f of this.flowers) { f.mixer.stopAllAction(); f.mixer.uncacheRoot(f.obj); f.mat.dispose(); }
     this.group.clear(); this.lights.clear(); this.drops.clear(); this.flowers = []; this.slots = []; this.clock = 0;
-    this.bag = new ComboBag(); this.counts = {};
+    this.bag = new ComboBag(); this.counts = {}; this.pearls.mesh.count = 0;
   }
   get built() { return this.flowers.length > 0; }
-  get fullShare() { return this.flowers.filter(f => f.g > .985).length / this.flowers.length; }
+  get opened() { return this.flowers.filter(f => f.g >= 1).length; }
   get avg() { return this.flowers.reduce((a, f) => a + f.g, 0) / this.flowers.length; }
-  get ready() { return this.fullShare >= GARDEN.readyFull && this.avg >= GARDEN.readyAvg; }
+  get ready() { return this.flowers.length > 0 && this.flowers.every(f => f.g >= 1); }
 
-  /** 중앙에서 좌우로 번지는 불규칙 군집. 앞·중간·뒤 깊이감 */
-  layout(span, back) {
-    const N = this.goal, k = Math.sqrt(N / 22), S = span * k, front = 1.3, B = back * k;
-    const Z = GARDEN.zones, zones = [[-.3, .3, Z.center], [-1, -.3, Z.side], [.3, 1, Z.side]];
-    const slots = [], space = .98;
+  /** 촘촘한 타원 군집. 뒤로 갈수록 높아져 꽃들이 겹겹이 쌓임 */
+  layout(span, back, cx) {
+    const N = this.goal, k = Math.sqrt(N / 30), S = span * k, B = back * k, zc = .55 - B;
+    const slots = [], space = .5;
     const gap = (x, z) => { let m = 9; for (const s of slots) m = Math.min(m, Math.hypot(s.x - x, (s.z - z) * .62)); return m; };
-    zones.forEach(([a, c, share], zi) => { for (let i = 0, n = zi === 2 ? N - slots.length : Math.round(N * share); i < n; i++) {
+    for (let i = 0; i < N; i++) {
       let best = null, bs = -9;
-      for (let t = 0; t < 48; t++) {
-        const x = S * (a + (c - a) * Math.random()), z = front - (front + B) * Math.random() ** .85;
-        const g = gap(x, z), q = Math.min(g, space + .25) - (g < space ? 3 * (space - g) : 0) - .1 * Math.abs(x) / S + Math.random() * .12;
+      for (let t = 0; t < 70; t++) {
+        const a = Math.random() * 6.2832, r = Math.sqrt(Math.random());
+        const x = cx + Math.cos(a) * r * S * (1 + .08 * Math.sin(a * 3)), z = zc + Math.sin(a) * r * B;
+        const g = gap(x, z), q = Math.min(g, space + .18) - (g < space ? 3 * (space - g) : 0) - .14 * r + Math.random() * .1;
         if (q > bs) { bs = q; best = { x, z }; }
       }
       slots.push({ ...best, y: hill(best.z) });
-    } });
+    }
     this.slots = slots;
   }
-  /** 처음부터 닫힌 꽃봉오리로 심어 둠 */
   plantAll() {
     for (const slot of this.slots) {
       const [k, m] = this.bag.next();
       const p = this.protos[k], o = p.scene.clone(true), mat = flowerMaterial(this.mats[m], slot.y);
+      if (m === 'glow') mat.emissiveIntensity *= GARDEN.glowDim;
       applyGlass(o, mat);
-      const scale = rnd(.9, 1.06);
-      o.position.set(slot.x, slot.y, slot.z); o.rotation.y = rnd(-.2, .2); o.rotation.z = rnd(-.05, .05); o.scale.setScalar(scale);
+      const scale = rnd(...GARDEN.scale);
+      o.position.set(slot.x, slot.y, slot.z); o.rotation.y = rnd(-.22, .22); o.rotation.z = rnd(-.05, .05); o.scale.setScalar(scale);
       this.group.add(o);
       const clip = p.animations[0], mx = new THREE.AnimationMixer(o), a = mx.clipAction(clip);
       a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.play(); a.paused = true;
       const f = {
         obj: o, mat, key: k, matKey: m, slot, scale, mixer: mx, action: a, dur: clip.duration, head: o.getObjectByName('Head'), headPos: new THREE.Vector3(),
-        t0: rnd(...GARDEN.bud), g: 0, target: 0, shown: -1, wet: 0, rate: rnd(.5, 1.05), need: rnd(...GARDEN.need) * this.needK, appetite: rnd(.45, 1.6),
+        t0: rnd(...GARDEN.stem), g: 0, shown: -1, wet: 0, opening: false, bt: 0, bloom: rnd(...GARDEN.bloom), claims: 0, phase: rnd(0, 6.3), pr: rnd(.85, 1.2) * GARDEN.pearl,
         base: { e: mat.emissiveIntensity, env: mat.envMapIntensity, ir: mat.iridescence },
       };
-      f.halo = this.lights.add({ pos: f.headPos, col: HALO[m], a: .02, size: 1.5 });
+      f.halo = this.lights.add({ pos: f.headPos, col: HALO[m], a: .012, size: .55 });
       this.flowers.push(f); this.apply(f);
       this.counts[k] = (this.counts[k] || 0) + 1; this.counts[m] = (this.counts[m] || 0) + 1;
     }
+    this.pearls.mesh.count = this.flowers.length;
+    this.pearls.mesh.instanceMatrix.needsUpdate = true;
   }
   apply(f) {
-    if (Math.abs(f.g - f.shown) > 1e-4 || f.g === 1 && f.shown !== 1) {
-      f.action.time = f.g >= 1 ? f.dur : f.t0 + (f.dur - f.t0) * f.g; f.mixer.update(0); f.shown = f.g;
-      f.obj.updateMatrixWorld(true); f.head.getWorldPosition(f.headPos); f.headR = (.2 + .34 * f.g) * f.scale;
+    const g = f.g, e = g * g * (3 - 2 * g);
+    if (Math.abs(g - f.shown) > 1e-4 || (g >= 1 && f.shown !== 1)) {
+      f.action.time = g >= 1 ? f.dur : f.t0 + (f.dur - f.t0) * e; f.mixer.update(0); f.shown = g;
+      // 꽃은 진주 안에서 작게 시작해 커지며 나옴. 다 피면 원본 크기 그대로
+      const r = Math.min(Math.max((g - .06) / .5, 0), 1), rv = r * r * (3 - 2 * r);
+      f.head.scale.multiplyScalar(Math.max(rv, .001)); f.head.visible = rv > .004;
+      f.obj.updateMatrixWorld(true); f.head.getWorldPosition(f.headPos); f.headR = (.13 + .24 * g) * f.scale + .05;
     }
-    const k = .3 + .7 * f.g * f.g * (3 - 2 * f.g), m = f.mat, b = f.base;
-    m.emissiveIntensity = b.e * k * (1 + .4 * f.wet);
-    m.envMapIntensity = b.env * (.5 + .5 * f.g);
-    m.iridescence = b.ir * (.3 + .7 * f.g);
-    f.halo.a = .015 + .05 * f.g + .09 * f.wet; f.halo.size = 1.3 + .7 * f.g;
+    const k = .62 + .38 * e, m = f.mat, b = f.base;
+    m.emissiveIntensity = b.e * k * (1 + .35 * f.wet);
+    m.envMapIntensity = b.env * (.55 + .45 * g);
+    m.iridescence = b.ir * (.35 + .65 * g);
+    f.halo.a = .012 + .02 * g + .05 * f.wet; f.halo.size = .55 + .55 * g;
   }
-  /** 비눗방울이 향할 꽃. 목마른 꽃일수록 조금 더 자주, 다 핀 꽃에게도 닿음 */
+  /** 아직 피지 않은 봉오리 중, 다른 방울이 덜 향한 곳으로. 모두 피었으면 아무 꽃이나 */
   pickTarget() {
-    const pa = Math.min(this.clock / 30, 1);          // 처음엔 꽃마다 받는 양이 들쭉날쭉하고, 시간이 갈수록 뒤처진 꽃에게도 고루 닿음
-    let sum = 0; const w = this.flowers.map(f => { const left = Math.max(f.need * (1 - f.target), 0) / 3, v = f.target > .97 ? .1 : (f.appetite * (1 - pa) + pa) * (.3 + left * left * (1 + 2 * pa)); sum += v; return v; });
-    let u = Math.random() * sum;
-    for (let i = 0; i < w.length; i++) { u -= w[i]; if (u <= 0) return this.flowers[i]; }
-    return this.flowers[0];
+    const buds = this.flowers.filter(f => !f.opening && f.g < 1), list = buds.length ? buds : this.flowers;
+    let sum = 0; const w = list.map(f => { const v = 1 / (1 + 4 * f.claims); sum += v; return v; });
+    let u = Math.random() * sum, t = list[0];
+    for (let i = 0; i < w.length; i++) { u -= w[i]; if (u <= 0) { t = list[i]; break; } }
+    t.claims++; return t;
   }
-  /** 방울 위치에서 닿는 꽃 */
   touching(p, r, target) {
     for (const f of this.flowers) {
-      if (f.target > .97 && f !== target) continue;     // 다 핀 꽃은 그 꽃을 향한 방울이 닿을 때만
-      if (p.distanceTo(f.headPos) < r * .55 + f.headR) return f;
+      if ((f.opening || f.g >= 1) && f !== target) continue;   // 핀 꽃은 그 꽃을 향한 방울만
+      if (p.distanceTo(f.headPos) < r * .6 + f.headR) return f;
     }
     return null;
   }
-  /** 비눗막이 터지는 순간: 물방울이 흩어졌다가 꽃에 맺힘 */
-  burst(pos, r, f, k = 1) {
-    const n = Math.round(4 + Math.min(r / k, 1) * 11), amount = (.5 + .95 * Math.min(r / k, 1.1)) / n;
+  burst(pos, r, f) {
+    const n = Math.round(4 + Math.min(r / .5, 1) * 9);
+    if (!f.opening && f.g < 1) f.opening = true, f.touched = true;   // 닿은 순간 예약: 다른 방울은 다음 봉오리로
     for (let i = 0; i < n && this.drops.list.length < this.drops.cap; i++) {
       const dir = new THREE.Vector3().randomDirection();
-      this.drops.list.push({
-        f, from: pos.clone().addScaledVector(dir, r * Math.random()), mid: dir.multiplyScalar(r * .5 + .12), t: 0, dur: rnd(.28, .7), size: rnd(.022, .06) * (.7 + .5 * Math.min(r, 1)),
-        off: new THREE.Vector3().randomDirection().multiplyScalar(rnd(.5, 1)), stick: rnd(.7, 1.5), landed: false, amount, p: pos.clone(),
-      });
+      this.drops.list.push({ f, from: pos.clone().addScaledVector(dir, r * Math.random()), mid: dir.multiplyScalar(r * .5 + .08), t: 0, dur: rnd(.22, .55), size: rnd(.012, .032), off: new THREE.Vector3().randomDirection().multiplyScalar(rnd(.6, 1)), stick: rnd(.6, 1.3), landed: false, p: pos.clone() });
     }
   }
-  update(dt, ending) {
+  update(dt) {
     this.clock += dt;
-    const D = this.drops, tmp = D.p; let c = 0;
+    const D = this.drops, tmp = new THREE.Vector3();
     for (let i = D.list.length - 1; i >= 0; i--) {
       const d = D.list[i], f = d.f; d.t += dt;
-      let size = d.size;
       const anchor = tmp.copy(d.off).multiplyScalar(f.headR).add(f.headPos);
       if (d.t < d.dur) {
         const e = d.t / d.dur, q = e * e * (3 - 2 * e), o = Math.sin(e * Math.PI);
-        d.p.copy(d.from).lerp(anchor, q).addScaledVector(d.mid, o * .6); d.p.y -= .1 * o;
+        d.p.copy(d.from).lerp(anchor, q).addScaledVector(d.mid, o * .6); d.p.y -= .06 * o;
       } else {
-        if (!d.landed) { d.landed = true; f.wet = 1; f.target = Math.min(1, f.target + d.amount / f.need); }
-        const e = (d.t - d.dur) / d.stick;                 // 맺혔다가 스며듦
-        if (e >= 1) { D.list.splice(i, 1); continue; }
-        d.p.copy(anchor); size *= (1 - e * e) * .85;
+        if (!d.landed) { d.landed = true; f.wet = 1; }
+        if ((d.t - d.dur) / d.stick >= 1) { D.list.splice(i, 1); continue; }
+        d.p.copy(anchor);
       }
     }
+    let c = 0;
     for (const d of D.list) {
       let size = d.size; if (d.landed) { const e = (d.t - d.dur) / d.stick; size *= (1 - e * e) * .85; }
       D.m.compose(d.p, D.q, D.s.setScalar(Math.max(size, 1e-4))); D.mesh.setMatrixAt(c++, D.m);
     }
     D.mesh.count = c; D.mesh.instanceMatrix.needsUpdate = true;
 
+    const P = this.pearls; c = 0;
     for (const f of this.flowers) {
-      if (ending && f.target < 1) f.target = Math.min(1, f.target + dt * .35);     // 사랑을 받은 꽃들은 마저 피어남
-      f.g += Math.min((f.target - f.g) * (1 - Math.exp(-dt * (ending ? Math.max(f.rate, 1.5) : f.rate))), dt * .55);
-      if (f.target - f.g < 2e-3) f.g = f.target;
-      f.wet = Math.max(0, f.wet - dt / 1.6);
+      if (f.opening && f.wet > 0 || f.bt > 0) { f.bt += dt; f.g = Math.min(f.bt / f.bloom, 1); }
+      f.wet = Math.max(0, f.wet - dt / 1.5);
       this.apply(f);
+      // 진주: 살짝 숨 쉬다가, 물을 받으면 부풀었다 꽃 중심으로 스며듦
+      const breathe = 1 + .045 * Math.sin(this.clock * 1.1 + f.phase), g = f.g;
+      const s = g <= 0 ? 1 + .25 * f.wet : g < .14 ? 1.25 + g * .9 : Math.max(0, 1.38 * (1 - ((g - .14) / .46)));
+      const r = Math.max(f.pr * Math.max(s, 0) * breathe * f.scale / .55, 1e-4);
+      P.m.compose(f.headPos, P.q, P.s.set(r, r, r)); P.mesh.setMatrixAt(c++, P.m);
     }
+    P.mesh.count = c; P.mesh.instanceMatrix.needsUpdate = true;
     this.lights.flush();
   }
 }

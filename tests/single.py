@@ -10,6 +10,6 @@ head='<title>AGAPE</title>\n<link rel="stylesheet" href="https://fonts.googleapi
 def page(nomic):
     return head+body+'<script>window.AGAPE_MODELS='+str(M).replace("'",'"')+';window.AGAPE_NO_MIC='+('true' if nomic else 'false')+';</script>\n<script>'+js+'</script>\n'
 os.makedirs('single',exist_ok=True)
-open('single/artifact_concept.html','w').write(page(True))
-open('single/AGAPE_테스트5_콘셉트.html','w').write('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"></head><body>'+page(False)+'</body></html>')
-print(os.path.getsize('single/artifact_concept.html'))
+open('single/artifact_t9.html','w').write(page(True))
+open('single/AGAPE_test9.html','w').write('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"></head><body>'+page(False)+'</body></html>')
+print(os.path.getsize('single/artifact_t9.html'))
