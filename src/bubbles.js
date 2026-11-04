@@ -10,7 +10,7 @@ import { createFilm } from './film.js';
 export const CONFIG = {
   driftRatio: .3,      // 꽃에 닿지 않고 터지지도 않은 채 멀리 떠나는 비율 (주소 ?drift=0.25)
   sizeMin: .06,        // 방울 반지름 범위 (꽃 머리 지름 ≈ 1)
-  sizeMax: 1.3,
+  sizeMax: .72,
   maxBuds: 5,          // 고리에서 동시에 부풀 수 있는 방울 수
   density: .3,        // 전체 생성 밀도 배율
   seekDelay: [.15, 1.8],  // 태어난 뒤 꽃 쪽으로 기울기 시작하는 시간 범위(초)
