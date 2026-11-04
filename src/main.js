@@ -120,7 +120,7 @@ function updateUpPose() {
 const S = {
   phase: 'loading', up: false, lift: 0, camT: 0, film: null, form: 0, h: 0, peak: 0, blowT: 0,
   bubbles: [], time: 0, sim: { on: false, strength: 0 }, hold: false, micDenied: false, flowersSeen: 0,
-  endT: 0, popped: 0, spawned: 0,
+  endT: 0, popped: 0, spawned: 0, noMic: !!window.AGAPE_NO_MIC,
 };
 let mic = null, garden = null;
 const sens = (() => { try { return +(localStorage.getItem('agape.sens') ?? 50); } catch { return 50; } })();
@@ -224,7 +224,7 @@ function syncUi() {
   $('title').classList.toggle('small', S.up || S.phase !== 'play' || garden?.total > 0);
   $('micBtn').hidden = !(live && S.up && !micOn && !S.micDenied && !S.noMic);
   $('holdBtn').hidden = !(live && S.up && (S.micDenied || S.noMic));
-  $('setBtn').hidden = !(live && S.up);
+  $('setBtn').hidden = !(live && S.up && !window.AGAPE_NO_MIC);
   if ($('setBtn').hidden) { $('settings').hidden = true; $('setBtn').setAttribute('aria-expanded', false); }
   $('gardenBtn').hidden = !(live && garden?.total > 0);
 }
@@ -283,7 +283,7 @@ function startEnding() {
 function resetAll() {
   for (const b of S.bubbles) { scene.remove(b.m); b.m.material.dispose(); }
   S.bubbles = []; dropFilm(); garden.reset(); layoutGarden();
-  Object.assign(S, { phase: 'play', up: false, lift: 0, camT: 0, h: 0, peak: 0, blowT: 0, hold: false, sim: { on: false, strength: 0 }, noMic: false, micDenied: false, blown: false, endT: 0, popped: 0, spawned: 0 });
+  Object.assign(S, { phase: 'play', up: false, lift: 0, camT: 0, h: 0, peak: 0, blowT: 0, hold: false, sim: { on: false, strength: 0 }, noMic: !!window.AGAPE_NO_MIC, micDenied: false, blown: false, endT: 0, popped: 0, spawned: 0 });
   mic?.stop(); mic = null;
   $('ending').classList.remove('on'); $('ending').hidden = true; $('micState').textContent = '';
   hint('막대를 눌러 들어 올리세요'); syncUi();
@@ -341,7 +341,12 @@ function loop(now) {
 }
 
 // ─── 시작 ────────────────────────────────────────────
-const gltf = new GLTFLoader(), load = u => gltf.loadAsync(u);
+const gltf = new GLTFLoader();
+// 테스트용 단일 파일에서는 모델이 페이지 안에 들어 있음
+const load = u => {
+  const b64 = window.AGAPE_MODELS?.[u.split('/').pop()];
+  return b64 ? gltf.parseAsync(Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer, '') : gltf.loadAsync(u);
+};
 (async () => {
   const names = 'ABCDE'.split('');
   const [protos, w] = await Promise.all([

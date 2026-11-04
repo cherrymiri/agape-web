@@ -6,3 +6,4 @@ tests/*.wav
 tests/*.json
 tests/*.log
 .vercel
+single
