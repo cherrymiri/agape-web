@@ -12,6 +12,7 @@ export const CONFIG = {
   sizeMin: .06,        // 방울 반지름 범위 (꽃 머리 지름 ≈ 1)
   sizeMax: .72,
   maxBuds: 5,          // 고리에서 동시에 부풀 수 있는 방울 수
+  endBubbles: 14,      // 엔딩 화면에 머무는 방울 수 상한
   density: .3,        // 전체 생성 밀도 배율
   seekDelay: [.15, 1.8],  // 태어난 뒤 꽃 쪽으로 기울기 시작하는 시간 범위(초)
 };
@@ -32,7 +33,7 @@ export class Bubbles {
   constructor({ scene, wand, W, ringR }) {
     this.scene = scene; this.wand = wand; this.W = W; this.ringR = ringR;
     this.list = []; this.buds = []; this.ring = null; this.form = 0;
-    this.since = 0; this.excite = 0; this.gust = 0; this.t = 0; this.prevB = 0; this.breathT = 0; this.phase = null; this.phaseLeft = 0; this.onset = true;
+    this.ambT = 0; this.since = 0; this.excite = 0; this.gust = 0; this.t = 0; this.prevB = 0; this.breathT = 0; this.phase = null; this.phaseLeft = 0; this.onset = true;
     this.stats = { born: 0, hits: 0, flew: 0, sizes: [], times: [], fates: [] };
     this.pos = new THREE.Vector3(); this.ndc = new THREE.Vector3();
   }
@@ -47,7 +48,7 @@ export class Bubbles {
   clear() {
     this.hideRing();
     for (const b of this.list) { this.scene.remove(b.m); b.m.material.dispose(); }
-    this.endMode = false; this.list = []; this.gust = 0; this.excite = 0; this.onset = true; this.prevB = 0; this.breathT = 0; this.phase = null;
+    this.ambT = 0; this.endMode = false; this.list = []; this.gust = 0; this.excite = 0; this.onset = true; this.prevB = 0; this.breathT = 0; this.phase = null;
     this.stats = { born: 0, hits: 0, flew: 0, sizes: [], times: [], fates: [] };
   }
 
@@ -55,6 +56,27 @@ export class Bubbles {
   settle() {
     this.endMode = true;
     for (const b of this.list) { if (b.fate === 'seek') b.delay = 0; else b.exit.multiplyScalar(1.8); }
+  }
+
+  /** 엔딩: 막대가 떠난 뒤에도 화면 밖 어딘가에서 불어오는 듯 방울이 불규칙하게 계속 흘러옴. 문구 앞은 비켜 감 */
+  ambient(dt, camera) {
+    this.ambT -= dt;
+    if (this.ambT > 0 || this.list.length >= CONFIG.endBubbles) return;
+    this.ambT = Math.random() < .3 ? rnd(.1, .35) : rnd(.45, 1.5);          // 가끔 연달아, 대개는 띄엄띄엄
+    const high = Math.random() < .26, y = high ? rnd(.56, .92) : rnd(-.82, -.02), z = rnd(-.6, 2.2);
+    const v3 = new THREE.Vector3(1, y, .5).unproject(camera).sub(camera.position).normalize();
+    const p = camera.position.clone().addScaledVector(v3, (z - camera.position.z) / v3.z);
+    const R = Math.min(.13 * logn(.6), .44) / this.W, a = R * .7;
+    const m = createFilm(a), u = m.material.uniforms, h = R + Math.sqrt(R * R - a * a);
+    u.uForm.value = 1; u.uH.value = h; u.uClose.value = 1;
+    const rW = R * this.W; m.scale.setScalar(this.W); this.scene.add(m);
+    p.x += rW + .2;
+    this.list.push({
+      m, u, r: rW, R, age: 0, close: 1, closeT: 1, pop: -1, st: 0, stV: 0, p, ambient: true, high, fate: 'fly',
+      v: new THREE.Vector3(-rnd(.3, 1), rnd(-.02, .16), rnd(-.04, .04)), drag: rnd(.08, .22), rise: rnd(.02, .1), gain: rnd(.2, .7),
+      swayA: rnd(.03, .24), swayF: rnd(.3, 1.1), swayP: rnd(6.2832), drift: new THREE.Vector3(), driftS: rnd(.06, .22), driftK: rnd(.3, 1),
+      exit: new THREE.Vector3(-rnd(.05, .3), rnd(0, .05), 0),
+    });
   }
 
   // ── 숨 → 생성 밀도 ──
@@ -223,6 +245,11 @@ export class Bubbles {
         if (p.z > 3.6) v.z -= (p.z - 3.6) * 3 * dt;
       } else {                                                 // 날아가는 방울은 점점 바람을 타고 화면 밖으로
         const ramp = clamp((b.age - .4) / 2.2, 0, 1);
+        if (b.ambient) {                                       // 엔딩 문구 앞은 비켜 감
+          const m = (b.r + .1) / hh;
+          if (b.high && ny - m < .62) v.y += (.62 - ny + m) * 3 * dt;
+          if (!b.high && ny + m > -.2) v.y -= (ny + m + .2) * 3 * dt;
+        }
         v.addScaledVector(b.exit, ramp * dt * 1.2);
       }
       p.addScaledVector(v, dt);
@@ -230,7 +257,8 @@ export class Bubbles {
 
       if (b.fate === 'fly') {
         const out = Math.abs(nx) > 1 + (b.r + .3) / hw || ny > 1 + (b.r + .3) / hh || ny < -1 - (b.r + .3) / hh;
-        if (out) { this.remove(i); this.stats.flew++; }      // 화면 밖으로 완전히 나간 뒤에만 정리
+        if (b.ambient && !b.entered) { if (Math.abs(nx) < 1) b.entered = true; else if (b.age < 30) continue; }
+        if (out) { const amb = b.ambient; this.remove(i); if (!amb) this.stats.flew++; }      // 화면 밖으로 완전히 나간 뒤에만 정리
         continue;
       }
       if (b.pop < 0 && b.close >= 1 && b.age > .5) {

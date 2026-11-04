@@ -279,6 +279,7 @@ function step(dt) {
     if (garden.ready) startEnding();                  // 30송이가 모두 피면 바로 엔딩
   }
   if (S.phase === 'ending' && S.exitT >= 1 && !bubbles.buds.length) bubbles.hideRing();
+  if (S.phase === 'ending' && S.endT > 2.2) bubbles.ambient(dt, camera);   // 사랑은 계속됨
   if (!S.blown && bubbles.stats.born) { S.blown = true; hint(''); }
 
   // 설정의 입력 수준 표시
