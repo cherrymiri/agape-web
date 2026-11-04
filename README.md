@@ -17,4 +17,4 @@
 
 ## 테스트
 
-`npm run build` 후 `tests/e2e.cjs`를 Playwright로 실행합니다. `tests/make_mic_wav.py`가 만드는 시험용 소리는 실제 숨소리가 아닙니다.
+`npm run build` 후 `tests/e2e.cjs`를 Playwright로 실행합니다. 시험용 소리는 합성 신호이며 실제 숨소리가 아닙니다.
