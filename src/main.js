@@ -78,7 +78,7 @@ function solveEnd() {
   const portrait = camera.aspect < .85, pts = [], flowers = garden.slots;
   for (const s of flowers) for (const dx of [-.38, .38]) for (const dy of [0, .86]) pts.push(new THREE.Vector3(s.x + dx, s.y + dy, s.z));
   const box = new THREE.Box3().setFromPoints(pts), c = box.getCenter(new THREE.Vector3());
-  const yHi = portrait ? -.02 : -.1, yLow = portrait ? -.84 : -.9, xLim = .92;   // 문구를 화면 중앙 쪽에 두고 꽃은 그 아래
+  const yHi = portrait ? -.16 : -.26, yLow = portrait ? -.84 : -.9, xLim = .92;   // 문구를 화면 중앙 쪽에 두고 꽃은 그 아래
   const el = THREE.MathUtils.degToRad(portrait ? 23 : 12), dir = new THREE.Vector3(0, Math.sin(el), Math.cos(el));
   const cam = camera.clone(), p = new THREE.Vector3();
   let at = c.clone();

@@ -32,7 +32,7 @@ button:focus-visible{outline:2px solid var(--milk);outline-offset:3px}
 #meter{position:relative;height:8px;border-radius:4px;background:#ffffff14;overflow:hidden}
 #level{position:absolute;left:0;top:0;bottom:0;width:0;background:#d9ccff}
 #gate{position:absolute;top:0;bottom:0;width:2px;background:#fff}
-#ending{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 25vh);text-align:center;padding-inline:24px;opacity:0;transition:opacity 1.5s ease;pointer-events:none}
+#ending{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 32vh);text-align:center;padding-inline:24px;opacity:0;transition:opacity 1.5s ease;pointer-events:none}
 #ending.on{opacity:1}
 #ending::before{content:"";position:absolute;left:50%;top:-34%;width:min(760px,100%);height:150%;transform:translateX(-50%);background:radial-gradient(closest-side,#a9b0ff14,#c8b8ff0a 55%,#0000);pointer-events:none}
 #ending .ko{position:relative;margin:0;font-size:clamp(25px,3.6vw,44px);letter-spacing:.05em;word-break:keep-all;color:#f2f4fd;
