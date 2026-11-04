@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createGlassMaterials, createWandMaterial, createGlassEnvironment, applyGlass } from './glass_materials.js';
 import { BreathMic } from './breath.js';
-import { createFilm, filmRadius } from './film.js';
+import { Bubbles, CONFIG } from './bubbles.js';
 import { Quality, TIERS } from './quality.js';
 import { Garden, hill } from './garden.js';
 
@@ -86,7 +86,11 @@ function fit() {
   const Di = Math.max(11, 3.1 / (tan * a));
   view.intro.at.set(0, portrait ? 1.0 : 1.5, 3.2);
   view.intro.pos.set(0, view.intro.at.y + Di * .36, 3.2 + Di);
-  view.ringNdc.set(portrait ? -.26 : -.5, portrait ? .22 : .16);
+  view.ringNdc.set(portrait ? .34 : .4, portrait ? .3 : .36);   // 화면 오른쪽 약 65~75% 지점
+  const hwI = Di * tan * a;                                      // 놓인 막대도 오른쪽에
+  POSE.rest.p.x = portrait ? hwI * .22 - .55 : hwI * .4 - 1.0;
+  updateUpPose();
+  view.bubbleK = portrait ? .78 : 1;
   garden && layoutGarden();
   lights();
 }
@@ -94,7 +98,10 @@ function lights() { if (garden) garden.lights.mat.uniforms.uScale.value = innerH
 function layoutGarden() {
   const keep = { p: camera.position.clone(), q: camera.quaternion.clone() };
   camera.position.copy(view.garden.pos); camera.lookAt(view.garden.at); camera.updateMatrixWorld();
-  garden.layout(camera, innerHeight > innerWidth ? .22 : .3);
+  // 들어 올린 막대의 손잡이 뒤에는 꽃을 심지 않음
+  const low = POSE.up.p.clone().add(new THREE.Vector3(0, -1.57 * W, 0)).project(camera);
+  const top = POSE.up.p.clone().project(camera);
+  garden.layout(camera, innerHeight > innerWidth ? .22 : .3, { x0: Math.min(low.x, top.x), x1: Math.max(low.x, top.x), y: low.y, pad: innerHeight > innerWidth ? .17 : .09 });
   camera.position.copy(keep.p); camera.quaternion.copy(keep.q); camera.updateMatrixWorld();
 }
 
@@ -106,8 +113,8 @@ wand.scale.setScalar(W); scene.add(wand);
 const hit = new THREE.Mesh(new THREE.CapsuleGeometry(.5, 1.5, 2, 8), new THREE.MeshBasicMaterial({ visible: false }));
 hit.position.y = -.7; wand.add(hit);
 const POSE = {
-  rest: { p: new THREE.Vector3(.1, .13, 3.2), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -.92, 0)).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)) },
-  up: { p: new THREE.Vector3(), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(.06, 2.5, -.1)) },
+  rest: { p: new THREE.Vector3(.1, .13, 3.2), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, .92, 0)).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)) },
+  up: { p: new THREE.Vector3(), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(.06, -2.42, .1)) },
 };
 function updateUpPose() {
   camera.position.copy(view.garden.pos); camera.lookAt(view.garden.at); camera.updateMatrixWorld();
@@ -116,93 +123,28 @@ function updateUpPose() {
   POSE.up.p.copy(camera.position).addScaledVector(v, t);
 }
 
+const bubbles = new Bubbles({ scene, wand, W, ringR: RING_R });
+if (params.has('pop')) CONFIG.popRatio = clamp(+params.get('pop'), 0, 1);
+
 // ─── 상태 ────────────────────────────────────────────
 const S = {
   phase: 'loading', up: false, lift: 0, camT: 0, film: null, form: 0, h: 0, peak: 0, blowT: 0,
-  bubbles: [], time: 0, sim: { on: false, strength: 0 }, hold: false, micDenied: false, flowersSeen: 0,
-  endT: 0, popped: 0, spawned: 0, noMic: !!window.AGAPE_NO_MIC,
+  time: 0, sim: { on: false, strength: 0 }, hold: false, micDenied: false, flowersSeen: 0,
+  endT: 0, noMic: !!window.AGAPE_NO_MIC,
 };
 let mic = null, garden = null;
 const sens = (() => { try { return +(localStorage.getItem('agape.sens') ?? 50); } catch { return 50; } })();
 $('sens').value = sens;
 
-function breath() {
+function breath(dt) {
   if (S.sim.on) return S.sim.strength;
-  if (S.hold) { S.holdT = (S.holdT || 0) + 1 / 60; return clamp(.32 + S.holdT * .4, 0, .9); }
-  S.holdT = 0;
+  if (S.hold) {                                   // 버튼 입력에도 실제 숨처럼 세기의 굴곡을 줌
+    S.holdT = (S.holdT || 0) + dt;
+    const t = S.holdT, swell = .3 + .55 * (1 - Math.exp(-t * 1.5)) * Math.exp(-Math.max(t - 2.5, 0) * .22);
+    return clamp(swell * (1 + .28 * Math.sin(t * 4.3 + (S.holdP || 0)) + .2 * Math.sin(t * 9.7 + 2 * (S.holdP || 0))), .12, 1);
+  }
+  S.holdT = 0; S.holdP = Math.random() * 6.3;
   return mic?.gate.on ? mic.gate.strength : 0;
-}
-
-// ─── 비눗막 → 비눗방울 ─────────────────────────────────
-function newFilm() {
-  const f = createFilm(RING_R); wand.add(f); S.film = f; S.form = 0; S.h = 0; S.peak = 0; S.blowT = 0;
-}
-function dropFilm() { if (S.film) { wand.remove(S.film); S.film.material.dispose(); S.film = null; } }
-
-function detach() {
-  const f = S.film; scene.attach(f); S.film = null;
-  const u = f.material.uniforms, dir = new THREE.Vector3(0, 0, 1).applyQuaternion(f.getWorldQuaternion(new THREE.Quaternion()));
-  const r = filmRadius(u) * W * (.94 + Math.random() * .12);
-  S.bubbles.push({ m: f, u, v: dir.multiplyScalar(.75 + S.peak * 1.1).setY(.12), age: 0, life: 6.5 + Math.random() * 3.8 + r, close: 0, r, sway: Math.random() * 6.3, swayK: .5 + Math.random() * .5, pop: -1 });
-  S.spawned++;
-  if (S.bubbles.length > quality.t.bubbles) { const o = S.bubbles.find(b => b.pop < 0 && b.close >= 1); if (o) o.pop = 0; }
-  newFilm();
-  S.form = .35;
-}
-
-function updateFilm(dt) {
-  const f = S.film; if (!f) return;
-  const u = f.material.uniforms; S.form = Math.min(1, S.form + dt / .75);
-  u.uForm.value = S.form; u.uTime.value = S.time; f.material.uniforms.uAlpha.value = ease(clamp(S.lift * 1.6 - .6, 0, 1));
-  const b = S.lift > .96 && S.form > .55 ? breath() : 0;
-  const a = RING_R;
-  if (b > 0) {
-    if (!S.blown) { S.blown = true; hint(''); }
-    S.blowT += dt; S.peak = Math.max(S.peak, b);
-    S.h += dt * (.16 + 1.15 * b);                       // 세고 길수록 빨리, 크게
-    const hMax = a * (1.45 + 2.6 * S.peak);              // 약한 숨은 작게 떨어지고 강한 숨은 크게
-    u.uWob.value = lerp(u.uWob.value, .012 + .018 * b, dt * 8);
-    if (S.h >= hMax) detach();
-  } else {
-    u.uWob.value = lerp(u.uWob.value, 0, dt * 4);
-    if (S.h > a * .4) {                                  // 숨이 멎으면 부푼 만큼 떨어져 나감 (구가 될 때까지 마저 오므라듦)
-      if (S.h < a) S.h += dt * .9; else detach();
-    } else { S.h = Math.max(0, S.h - dt * .5); if (!S.h) { S.peak = 0; S.blowT = 0; } }  // 너무 약했으면 도로 잦아듦
-  }
-  if (S.film) S.film.material.uniforms.uH.value = Math.max(S.h, .0025);
-}
-
-const tmp = new THREE.Vector3();
-function updateBubbles(dt) {
-  const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-  for (let i = S.bubbles.length - 1; i >= 0; i--) {
-    const b = S.bubbles[i], u = b.u; b.age += dt; u.uTime.value = S.time;
-    if (b.close < 1) {
-      b.close = Math.min(1, b.close + dt / .26); u.uClose.value = ease(b.close);
-    }
-    const damp = Math.exp(-1.15 * dt); b.v.x *= damp; b.v.z *= damp;
-    const rise = (.17 + .06 / b.r) * clamp(b.age, 0, 1.4);
-    b.v.y += (rise - b.v.y) * Math.min(1, dt * 1.2);
-    b.m.position.addScaledVector(b.v, dt);
-    b.m.position.x += Math.sin(b.age * b.swayK + b.sway) * .16 * dt;
-    b.m.position.z += Math.cos(b.age * b.swayK * .7 + b.sway) * .07 * dt;
-    u.uWob.value = .008 * Math.exp(-b.age * .25) + .002;
-    // 화면 밖으로 나가지 않도록
-    const d = camera.position.distanceTo(b.m.position), hh = d * tan, hw = hh * camera.aspect;
-    const lim = Math.max(.3, hw - b.r - .25);
-    const dx = b.m.position.x - camera.position.x * 0;
-    if (Math.abs(dx) > lim) b.v.x -= Math.sign(dx) * dt * 1.4;
-    const top = camera.position.y + (view.garden.at.y - camera.position.y) + hh * .9 - b.r;
-    if (b.pop < 0 && (b.age > b.life || (b.age > 2 && b.m.position.y > top))) b.pop = 0;
-    if (b.pop >= 0) {
-      b.pop += dt / .38; u.uPop.value = Math.min(b.pop, 1);
-      if (b.pop >= 1) {
-        const c = tmp.set(0, 0, u.uH.value - filmRadius(u)).applyMatrix4(b.m.matrixWorld);
-        garden.spawnSeed(c, quality.t.flowers); S.popped++;
-        scene.remove(b.m); b.m.material.dispose(); S.bubbles.splice(i, 1);
-      }
-    }
-  }
 }
 
 // ─── 조작 ────────────────────────────────────────────
@@ -233,7 +175,7 @@ async function toggleWand() {
   if (S.phase !== 'play') return;
   S.up = !S.up;
   if (S.up) {
-    if (!S.film) newFilm();
+    bubbles.showRing();
     if (!mic?.ready && !S.noMic && !S.micDenied) {
       if (await BreathMic.alreadyGranted()) startMic();
       else hint('막대를 들었어요. 마이크를 켜고 숨을 불어 보세요');
@@ -276,14 +218,12 @@ $('againBtn').onclick = resetAll;
 // ─── 엔딩과 초기화 ─────────────────────────────────────
 function startEnding() {
   S.phase = 'ending'; S.up = false; S.endT = 0; hold(false); hint(''); syncUi();
-  dropFilm(); mic?.stop();
-  for (const b of S.bubbles) if (b.pop < 0) b.pop = 0;
+  bubbles.hideRing(); mic?.stop(); bubbles.wrapUp();
   view.endFrom = camera.position.clone();
 }
 function resetAll() {
-  for (const b of S.bubbles) { scene.remove(b.m); b.m.material.dispose(); }
-  S.bubbles = []; dropFilm(); garden.reset(); layoutGarden();
-  Object.assign(S, { phase: 'play', up: false, lift: 0, camT: 0, h: 0, peak: 0, blowT: 0, hold: false, sim: { on: false, strength: 0 }, noMic: !!window.AGAPE_NO_MIC, micDenied: false, blown: false, endT: 0, popped: 0, spawned: 0 });
+  bubbles.clear(); garden.reset(); layoutGarden();
+  Object.assign(S, { phase: 'play', up: false, lift: 0, camT: 0, h: 0, peak: 0, blowT: 0, hold: false, sim: { on: false, strength: 0 }, noMic: !!window.AGAPE_NO_MIC, micDenied: false, blown: false, endT: 0 });
   mic?.stop(); mic = null;
   $('ending').classList.remove('on'); $('ending').hidden = true; $('micState').textContent = '';
   hint('막대를 눌러 들어 올리세요'); syncUi();
@@ -296,7 +236,7 @@ function step(dt) {
   mic?.update(dt);
   S.lift += ((S.up ? 1 : 0) - S.lift) * Math.min(1, dt * 3.1);
   if (Math.abs((S.up ? 1 : 0) - S.lift) < .002) S.lift = S.up ? 1 : 0;
-  const hasGarden = garden.total > 0 || S.spawned > 0;
+  const hasGarden = garden.total > 0 || bubbles.stats.born > 0;
   S.camT += ((S.up || hasGarden ? 1 : 0) - S.camT) * Math.min(1, dt * 1.5);
 
   // 카메라
@@ -324,7 +264,12 @@ function step(dt) {
   groundMat.uniforms.uFocusA.value = 1 - e * .9 * (1);
   groundMat.uniforms.uGlow.value += (garden.glow - groundMat.uniforms.uGlow.value) * Math.min(1, dt);
 
-  updateFilm(dt); updateBubbles(dt); garden.update(dt);
+  bubbles.update(dt, breath(dt), {
+    active: S.phase === 'play' && S.up && S.lift > .96, lift: S.lift, camera, maxBubbles: quality.t.bubbles,
+    spawnSeed: p => garden.spawnSeed(p, quality.t.flowers), portraitK: view.bubbleK,
+  });
+  garden.update(dt);
+  if (!S.blown && bubbles.stats.born) { S.blown = true; hint(''); }
 
   // 설정의 입력 수준 표시
   if (mic?.ready && !$('settings').hidden) {
@@ -356,6 +301,7 @@ const load = u => {
   const P = Object.fromEntries(names.map((k, i) => [k, protos[i]]));
   applyGlass(w.scene, createWandMaterial()); wand.add(w.scene);
   garden = new Garden(scene, P, createGlassMaterials());
+  S.bubbles = bubbles;
   ready = true; buildPipeline(); fit(); updateUpPose();
   addEventListener('resize', () => { fit(); updateUpPose(); });
   S.phase = 'play'; camera.position.copy(view.intro.pos); camera.lookAt(view.intro.at);
@@ -368,7 +314,7 @@ const load = u => {
   renderer.setAnimationLoop(loop);
   if (DEBUG) {
     window.__agape = {
-      S, garden, quality, THREE, wand, P, camera, scene, renderer, toggleWand, startEnding, resetAll,
+      S, bubbles, CONFIG, garden, quality, THREE, wand, P, camera, scene, renderer, toggleWand, startEnding, resetAll,
       breathe(s) { S.sim.on = s > 0; S.sim.strength = s; },
       step(sec, d = 1 / 30) { frozen = true; for (let t = 0; t < sec; t += d) step(d); },
       resume() { frozen = false; }, draw() { (composer ?? renderer).render(scene, camera); },

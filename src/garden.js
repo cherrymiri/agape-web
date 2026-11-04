@@ -92,7 +92,7 @@ export class Garden {
   }
   get glow() { return Math.min(1, this.done.length / 40); }
   /** camera에서 실제로 보이는 곳만 슬롯으로 등록 */
-  layout(camera, topNdc) {
+  layout(camera, topNdc, block) {
     if (this.total) return;
     const slots = [], v = new THREE.Vector3(), SPACE = 1.2;
     for (let r = 0; r < 14; r++) {
@@ -102,7 +102,8 @@ export class Garden {
         const zz = z + (Math.random() - .5) * .3, y = hill(zz);
         v.set(x - Math.sign(x) * -.6, y + 1.32, zz).project(camera);
         const top = v.y, side = Math.abs(v.x);
-        if (top < topNdc && side < .97) slots.push({ x, z: zz, y, r, taken: false });
+        const hid = block && v.x > block.x0 - block.pad && v.x < block.x1 + block.pad && top > block.y - .05;
+        if (top < topNdc && side < .97 && !hid) slots.push({ x, z: zz, y, r, taken: false });
       }
     }
     this.slots = slots;

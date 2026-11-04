@@ -1,8 +1,8 @@
 // 렌더 품질 3단계. 프레임이 떨어지면 자동으로 낮추고, 넉넉하면 한 단계까지 되돌립니다.
 export const TIERS = [
-  { name: 'low', pixel: 1, bloom: false, samples: 0, bubbles: 7, flowers: 54 },
-  { name: 'mid', pixel: 1.25, bloom: true, samples: 0, bubbles: 10, flowers: 80 },
-  { name: 'high', pixel: 2, bloom: true, samples: 4, bubbles: 14, flowers: 110 },
+  { name: 'low', pixel: 1, bloom: false, samples: 0, bubbles: 14, flowers: 54 },
+  { name: 'mid', pixel: 1.25, bloom: true, samples: 0, bubbles: 20, flowers: 80 },
+  { name: 'high', pixel: 2, bloom: true, samples: 4, bubbles: 28, flowers: 110 },
 ];
 export class Quality {
   constructor(apply, forced) {
