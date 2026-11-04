@@ -11,8 +11,8 @@ export const CONFIG = {
   popRatio: .8,        // 화면 안에서 터지는 비율. 나머지는 터지지 않고 화면 밖으로 날아감 (주소에 ?pop=0.7 로도 조절)
   sizeMin: .06,        // 방울 반지름 범위 (꽃 머리 지름 ≈ 1)
   sizeMax: 1.3,
-  maxBuds: 4,          // 고리에서 동시에 부풀 수 있는 방울 수
-  density: 1,          // 전체 생성 밀도 배율
+  maxBuds: 5,          // 고리에서 동시에 부풀 수 있는 방울 수
+  density: .85,        // 전체 생성 밀도 배율
   life: [              // [비중, 최소초, 최대초]
     [.26, .9, 2.2], [.46, 3, 6], [.28, 7, 12],
   ],
@@ -34,7 +34,7 @@ export class Bubbles {
   constructor({ scene, wand, W, ringR }) {
     this.scene = scene; this.wand = wand; this.W = W; this.ringR = ringR;
     this.list = []; this.buds = []; this.ring = null; this.form = 0;
-    this.since = 0; this.gust = 0; this.t = 0; this.prevB = 0; this.breathT = 0; this.phase = null; this.phaseLeft = 0; this.onset = true;
+    this.since = 0; this.excite = 0; this.gust = 0; this.t = 0; this.prevB = 0; this.breathT = 0; this.phase = null; this.phaseLeft = 0; this.onset = true;
     this.stats = { born: 0, popped: 0, flew: 0, sizes: [], times: [], lives: [] };
     this.pos = new THREE.Vector3(); this.ndc = new THREE.Vector3();
   }
@@ -49,12 +49,18 @@ export class Bubbles {
   clear() {
     this.hideRing();
     for (const b of this.list) { this.scene.remove(b.m); b.m.material.dispose(); }
-    this.list = []; this.gust = 0; this.onset = true; this.prevB = 0; this.breathT = 0; this.phase = null;
+    this.endMode = false; this.list = []; this.gust = 0; this.excite = 0; this.onset = true; this.prevB = 0; this.breathT = 0; this.phase = null;
     this.stats = { born: 0, popped: 0, flew: 0, sizes: [], times: [], lives: [] };
   }
-  /** 정원 완성: 아직 떠 있는 방울은 터뜨리지 않고 바람에 실려 화면 밖으로 */
-  releaseAll() { for (const b of this.list) if (b.fate === 'pop' && b.pop < 0) this.setFlyer(b); }
-  get popping() { let n = 0; for (const b of this.list) if (b.pop >= 0) n++; return n; }
+
+  /** 엔딩: 떠 있는 방울은 곧 흩어지고, 퇴장 중 태어나는 방울도 오래 머물지 않음 (문구 자리를 비움) */
+  settle() {
+    this.endMode = true;
+    for (const b of this.list) {
+      if (b.fate === 'pop') b.life = Math.min(b.life, b.age + rnd(.3, 2.2));
+      else b.exit.multiplyScalar(2.2);
+    }
+  }
 
   // ── 숨 → 생성 밀도 ──
   nextPhase(b) {
@@ -72,13 +78,14 @@ export class Bubbles {
 
   sampleSize(b) {
     const p = PHASE[this.phase];
-    let r = p.mu * logn(p.sig) * (.68 + .78 * b) * this.fitK;
+    const q = Math.random() < .24 ? PHASE[Object.keys(PHASE)[Math.floor(rnd(4))]] : p;   // 다른 국면의 크기가 섞여 나옴
+    let r = q.mu * logn(q.sig) * (.68 + .78 * b) * this.fitK;
     if (this.breathT > .9 && b > .45 && Math.random() < .09) r *= rnd(1.6, 2.3);   // 드물게 아주 큰 방울
     return clamp(r, CONFIG.sizeMin, CONFIG.sizeMax);
   }
 
   startBud(b) {
-    this.since = 0;
+    this.since = 0; this.excite += rnd(1, 8);   // 하나가 나오면 잠깐 연달아 나오기 쉬워짐
     const rW = this.sampleSize(b), R = this.ringR, r = rW / this.W;
     const big = this.buds.some(x => x.a > R * .55);
     let a = clamp(r * rnd(.55, .9), .03, R * .9);
@@ -130,6 +137,7 @@ export class Bubbles {
       for (const l of CONFIG.life) { u2 -= l[0]; if (u2 <= 0) { L = l; break; } }
       o.life = rnd(L[1], L[2]) * (.72 + .55 * Math.min(rW, .8)) * logn(.12);
     } else this.setFlyer(o);
+    if (this.endMode) { if (o.fate === 'pop') o.life = rnd(.5, 1.7); else o.exit.multiplyScalar(2.2); }
     this.list.push(o);
     this.stats.born++; this.stats.sizes.push(+rW.toFixed(3)); this.stats.times.push(+this.t.toFixed(3));
     this.stats.lives.push(o.fate === 'pop' ? +o.life.toFixed(2) : -1);
@@ -149,7 +157,7 @@ export class Bubbles {
   }
 
   /** b: 숨 세기 0~1 / active: 막대가 들려 있고 불 수 있는 상태 */
-  update(dt, breath, { active, lift, camera, maxBubbles, spawnSeed, canSeed, portraitK = 1 }) {
+  update(dt, breath, { active, lift, camera, maxBubbles, spawnSeed, portraitK = 1 }) {
     this.t += dt; this.fitK = portraitK; this.fitV = portraitK;
     const b = active ? breath : 0, t = this.t;
     // 고리 막
@@ -171,17 +179,17 @@ export class Bubbles {
       if (this.phaseLeft <= 0) this.nextPhase(b);
       // 숨이 이어지는 한 생성은 끊기지 않음. 화면이 붐비면 밀도만 낮추고, 오래 안 나왔으면 다음 방울이 나올 확률이 올라감
       const room = Math.max(.4, 1 - this.list.length / maxBubbles);
-      this.since += dt;
-      const lam = PHASE[this.phase].rate * (b ** 1.15) * 1.5 * (1 + .55 * this.gust) * room * CONFIG.density + 5 * this.since ** 3;
+      this.since += dt; this.excite *= Math.exp(-5 * dt);
+      const lam = PHASE[this.phase].rate * (b ** 1.15) * 1.5 * (1 + .55 * this.gust) * room * CONFIG.density + this.excite + 14 * this.since ** 2;
       if (this.buds.length < CONFIG.maxBuds && this.form > .5 && Math.random() < 1 - Math.exp(-Math.max(lam, 0) * dt)) this.startBud(b);
     } else if (this.prevB > 0 || !active) { this.onset = true; }
     this.prevB = b;
     this.grow(dt, b);
 
-    this.move(dt, camera, maxBubbles, spawnSeed, canSeed);
+    this.move(dt, camera, maxBubbles, spawnSeed);
   }
 
-  move(dt, camera, maxBubbles, spawnSeed, canSeed) {
+  move(dt, camera, maxBubbles, spawnSeed) {
     const t = this.t, w = (this._w ||= new THREE.Vector3());
     // 동시 표시 한도를 넘으면 가장 오래된 방울을 터뜨리지 않고 내보냄
     let live = 0; for (const b of this.list) if (b.fate === 'pop' && b.pop < 0) live++;
@@ -232,13 +240,10 @@ export class Bubbles {
         if (out || u.uAlpha.value <= 0) { this.remove(i); this.stats.flew++; }
         continue;
       }
-      if (b.pop < 0 && b.age > b.life && b.close >= 1) {
-        if (canSeed(this.popping)) b.pop = 0;       // 목표 개수를 넘길 방울은 터지지 않고 날아감
-        else { this.setFlyer(b); continue; }
-      }
+      if (b.pop < 0 && b.age > b.life && b.close >= 1) b.pop = 0;
       if (b.pop >= 0) {
         b.pop += dt / (.2 + .26 * Math.min(b.r, 1)); u.uPop.value = Math.min(b.pop, 1);
-        if (b.pop >= 1) { spawnSeed(p.clone()); this.stats.popped++; this.remove(i); }
+        if (b.pop >= 1) { spawnSeed(p.clone()); this.stats.popped++; this.remove(i); }   // 꽃 예약이 다 찼으면 씨앗 없이 사라짐
       }
     }
   }

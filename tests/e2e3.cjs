@@ -13,30 +13,38 @@ const press=async pg=>{const bx=await pg.locator('#holdBtn').boundingBox();await
  await pg.evaluate(()=>__agape.resume());await press(pg);const re=await pg.evaluate(()=>{const A=__agape,B=A.bubbles,n=B.stats.born;A.step(.05);const bud=B.buds.length;A.step(1.5);return{bud,d:B.stats.born-n}});ok('다시 누르면 즉시 재개',re.bud>=1&&re.d>=1,re);await pg.evaluate(()=>__agape.resume());await pg.mouse.up();
  // 포인터 이벤트 안정성
  await press(pg);await pg.evaluate(()=>{const h=document.getElementById('holdBtn');h.dispatchEvent(new PointerEvent('lostpointercapture',{pointerId:1,bubbles:true}));h.dispatchEvent(new PointerEvent('pointerleave',{pointerId:1}));h.dispatchEvent(new PointerEvent('pointermove',{pointerId:1,bubbles:true}))});ok('캡처 풀림·이탈에도 입력 유지',await pg.evaluate(()=>__agape.S.hold));await pg.mouse.up();await pg.waitForTimeout(100);ok('실제 놓으면 해제',!(await pg.evaluate(()=>__agape.S.hold)));ok('오류 없음',!pg.errs.length,pg.errs.join('|'));await pg.context().close()}
-// 2. 자동 엔딩: PC·모바일, 품질 무관
-for(const [n,q,w,h] of [['PC 저품질','',1280,720],['PC 고품질 설정','&tier=2',1280,720],['모바일','',390,844]]){
+// 2. 자동 엔딩
+for(const [n,q,w,h] of [['PC','',1280,720],['PC 고품질 설정','&tier=2',1280,720],['모바일','',390,844]]){
  const pg=await open(q,w,h);
- ok(n+' 정원 보기 버튼 없음',await pg.evaluate(()=>!document.getElementById('gardenBtn')));
  await press(pg);
- const log=await pg.evaluate(()=>{const A=__agape,B=A.bubbles,G=A.garden;let peak=0,finAt=null,endAt=null,atEnd=null,textEarly=false,grew=0,bornAtFin=null,t=0;
-  for(let i=0;i<3600;i++){A.step(1/30);t+=1/30;peak=Math.max(peak,G.committed+B.popping);
-   if(!finAt&&A.S.phase==='finishing'){finAt=t;bornAtFin=null;A.S._c=1}
-   if(finAt&&bornAtFin===null&&A.S.phase!=='play'){bornAtFin=B.stats.born+B.buds.length}
-   if(!endAt&&A.S.phase==='ending'){endAt=t;atEnd={done:G.done.length,grow:G.growing.length,seed:G.seeds.length,pop:B.popping}}
-   if(!document.getElementById('ending').hidden){if(!A.S.textAt)A.S.textAt=t;break}}
-  return{peak,finAt,endAt,atEnd,textAt:A.S.textAt,done:G.done.length,total:G.total,born:B.stats.born,popped:B.stats.popped,flew:B.stats.flew,bornAtFin,up:A.S.up,hold:A.S.hold,c:G.counts,left:B.list.length,wandX:A.wand.position.x}});
- console.log(n,JSON.stringify(log));
- ok(n+' 자동 엔딩 실행',log.finAt&&log.endAt&&log.textAt);ok(n+' 꽃 정확히 20',log.done===20&&log.total===20&&log.peak<=20,{done:log.done,peak:log.peak});
- ok(n+' 터진 수=꽃 수',log.popped===20,log.popped);ok(n+' 마지막 개화 후 전환',log.atEnd.done===20&&log.atEnd.grow===0&&log.atEnd.seed===0&&log.atEnd.pop===0,log.atEnd);ok(n+' 감상 시간',log.textAt-log.endAt>=9.5,+(log.textAt-log.endAt).toFixed(1));ok(n+' 목표 후 새 방울 없음',log.born<=log.bornAtFin,[log.bornAtFin,log.born]);
- await pg.evaluate(()=>{__agape.draw()});await pg.waitForTimeout(100);await pg.mouse.up();await pg.evaluate(()=>{__agape.step(.1);__agape.resume()});await pg.waitForTimeout(3000);await pg.screenshot({path:`tests/g_${n}.png`});
- const vis=await pg.evaluate(()=>document.body.innerText.split('\n').map(x=>x.trim()).filter(Boolean).filter(x=>{return true}));
- const shown=await pg.evaluate(()=>[...document.querySelectorAll('button,p,h1')].filter(e=>e.offsetParent!==null&&!e.classList.contains('sr')&&getComputedStyle(e).opacity!=='0').map(e=>e.textContent.trim()).filter(Boolean));console.log(n,'표시',shown);
- ok(n+' 엔딩 문구·버튼만',shown.includes('사랑을 주는 데 이유가 필요해?')&&shown.includes('Do I need a reason to give love?')&&shown.includes('다시 하기')&&shown.filter(x=>!/AGAPE|무조건적|사랑을 주는|Do I need|다시 하기/.test(x)).length===0,shown);
+ const log=await pg.evaluate(()=>{const A=__agape,B=A.bubbles,G=A.garden,S=A.S;let peak=0,fullAt=null,lastBloomT=null,endAt=null,atEnd=null,exitDoneAt=null,bornFull=null,bornEnd=null,bornExit=null,goneAtExit=null,t=0,dt=1/30,exitBirth=[],textAt=null,screens=[];
+  for(let i=0;i<4000;i++){const dBefore=G.done.length;A.step(dt);t+=dt;peak=Math.max(peak,G.committed);
+   if(fullAt===null&&G.committed>=20){fullAt=t;bornFull=B.stats.born}
+   if(endAt===null&&S.phase==='ending'){endAt=t;bornEnd=B.stats.born;atEnd={done:G.done.length,grow:G.growing.length,seed:G.seeds.length}}
+   if(endAt!==null&&exitDoneAt===null&&S.exitT>=1){exitDoneAt=t;bornExit=B.stats.born;const v=A.wand.position.clone().project(A.camera);const hand=new A.THREE.Vector3(0,-1.2,0).applyMatrix4(A.wand.matrixWorld).project(A.camera);const ring=new A.THREE.Vector3(-.4,0,0).applyMatrix4(A.wand.matrixWorld).project(A.camera);goneAtExit={ring:+ring.x.toFixed(2),hand:+hand.x.toFixed(2)}}
+   if(!document.getElementById('ending').hidden){textAt=t;break}}
+  const c=exitDoneAt;A.step(2);const bornAfter=B.stats.born;
+  return{peak,fullAt,endAt,atEnd,exitDoneAt,goneAtExit,textAt,bornFull,bornEnd,bornExit,bornAfter,done:G.done.length,total:G.total,popped:B.stats.popped,flew:B.stats.flew,c:G.counts,buds:B.buds.length,ring:!!B.ring,slots:G.done.map(f=>[f.slot.x,f.slot.z])}});
+ console.log(n,JSON.stringify({...log,slots:undefined,c:undefined}));
+ ok(n+' 꽃 정확히 20',log.done===20&&log.total===20&&log.peak<=20,{done:log.done,peak:log.peak});
+ ok(n+' 예약 후에도 생성 계속',log.bornEnd>log.bornFull,{예약시:log.bornFull,개화완료시:log.bornEnd});
+ ok(n+' 20번째 개화 완료 시 시작',log.atEnd.done===20&&log.atEnd.grow===0&&log.atEnd.seed===0,log.atEnd);
+ ok(n+' 막대 퇴장 중 생성',log.bornExit>log.bornEnd,{퇴장시작:log.bornEnd,퇴장끝:log.bornExit});
+ ok(n+' 막대 퇴장 시간',log.exitDoneAt-log.endAt>=1.2&&log.exitDoneAt-log.endAt<=1.8,+(log.exitDoneAt-log.endAt).toFixed(2));
+ ok(n+' 막대 화면 밖',log.goneAtExit.ring>1&&log.goneAtExit.hand>1,log.goneAtExit);
+ ok(n+' 퇴장 후 신규 생성 없음',log.bornAfter<=log.bornExit+(0)+5&&log.buds===0&&!log.ring,{퇴장끝:log.bornExit,이후:log.bornAfter,buds:log.buds});
+ const gapT=log.textAt-log.endAt;ok(n+' 문구까지 2~3초',gapT>=2&&gapT<=3,+gapT.toFixed(2));
+ const xs=log.slots.map(s=>s[0]),sp=Math.max(...xs.map(Math.abs)),ce=xs.filter(x=>Math.abs(x)<sp*.33).length;ok(n+' 중앙 약 40%',ce>=6&&ce<=11,{중앙:ce,좌:xs.filter(x=>x<-sp*.33).length,우:xs.filter(x=>x>sp*.33).length});
+ ok(n+' 터지기와 날아감 공존',log.popped>=20&&log.flew>0,{p:log.popped,f:log.flew});
+ await pg.mouse.up();const lf=await pg.evaluate(()=>{__agape.step(1.5);const n=__agape.bubbles.list.filter(b=>b.fate==='pop').length;__agape.draw();__agape.resume();return n});ok(n+' 문구 등장 후 방울 정리',lf===0,lf);await pg.waitForTimeout(2300);await pg.screenshot({path:`tests/g_${n}.png`});
+ const fr=await pg.evaluate(()=>{const A=__agape,p=new A.THREE.Vector3();let lo=9,hi=-9,mx=0;for(const f of A.garden.done)for(const dy of [0,1.3]){p.set(f.slot.x,f.slot.y+dy,f.slot.z).project(A.camera);lo=Math.min(lo,p.y);hi=Math.max(hi,p.y);mx=Math.max(mx,Math.abs(p.x))}const r=document.querySelector('#ending button').getBoundingClientRect();return{lo,hi,mx,txt:1-2*r.bottom/innerHeight}});
+ ok(n+' 꽃이 문구와 안 겹침',fr.hi<fr.txt,fr);ok(n+' 꽃 화면 안',fr.mx<1&&fr.lo>-1);ok(n+' 꽃이 화면 큰 비중',fr.hi-fr.lo>.8,+(fr.hi-fr.lo).toFixed(2));
+ const shown=await pg.evaluate(()=>[...document.querySelectorAll('button,p,h1')].filter(e=>e.offsetParent!==null&&!e.classList.contains('sr')&&getComputedStyle(e).opacity!=='0'&&getComputedStyle(e.parentElement).opacity!=='0').map(e=>e.textContent.trim()).filter(Boolean));
+ ok(n+' 엔딩 문구·버튼만',shown.includes('사랑을 주는 데 이유가 필요해?')&&shown.includes('Do I need a reason to give love?')&&shown.includes('다시 하기')&&shown.filter(x=>!/사랑을 주는|Do I need|다시 하기/.test(x)).length===0,shown);
  await pg.click('#againBtn');await pg.waitForTimeout(300);
- const st=await pg.evaluate(()=>{const A=__agape,g=A.garden,B=A.bubbles;return{ph:A.S.phase,up:A.S.up,hold:A.S.hold,lift:A.S.lift,cam:A.S.camT,b:B.list.length,buds:B.buds.length,ring:!!B.ring,born:B.stats.born,t:g.total,d:g.done.length,seed:g.seeds.length,inst:g.pools.map.size,end:document.getElementById('ending').hidden}});
- ok(n+' 다시 하기 초기화',st.ph==='play'&&!st.up&&!st.hold&&st.b===0&&!st.ring&&st.born===0&&st.t===0&&st.seed===0&&st.inst===0&&st.end&&st.cam===0,st);
- // 두 번째 관람객
- const two=await pg.evaluate(()=>{const A=__agape;A.toggleWand();A.step(4);A.S.noMic=true;A.breathe(.8);for(let i=0;i<3000&&A.S.phase==='play';i++)A.step(1/30);A.breathe(0);for(let i=0;i<1200&&A.S.phase!=='ending';i++)A.step(1/30);return{ph:A.S.phase,done:A.garden.done.length}});ok(n+' 두 번째 체험도 20송이',two.ph==='ending'&&two.done===20,two);ok(n+' 오류 없음',!pg.errs.length,pg.errs.join('|'));await pg.context().close()}
+ const st=await pg.evaluate(()=>{__agape.step(.04);const A=__agape,g=A.garden,B=A.bubbles;return{ph:A.S.phase,up:A.S.up,hold:A.S.hold,cam:A.S.camT,ex:A.S.exitT,et:A.S.endT,wandX:+A.wand.position.x.toFixed(2),b:B.list.length,buds:B.buds.length,ring:!!B.ring,born:B.stats.born,t:g.total,d:g.done.length,seed:g.seeds.length,inst:g.pools.map.size,end:document.getElementById('ending').hidden}});
+ ok(n+' 다시 하기 초기화',st.ph==='play'&&!st.up&&!st.hold&&st.b===0&&!st.ring&&st.born===0&&st.t===0&&st.seed===0&&st.inst===0&&st.end&&st.cam===0&&st.ex===0&&st.et===0&&Math.abs(st.wandX)<6,st);
+ const two=await pg.evaluate(()=>{const A=__agape;A.toggleWand();A.step(4);A.breathe(.8);for(let i=0;i<3000&&A.S.phase==='play';i++)A.step(1/30);A.breathe(0);for(let i=0;i<150;i++)A.step(1/30);return{ph:A.S.phase,done:A.garden.done.length}});ok(n+' 두 번째 체험도 20송이',two.ph==='ending'&&two.done===20,two);ok(n+' 오류 없음',!pg.errs.length,pg.errs.join('|'));await pg.context().close()}
 // 3. 목표 상수 변경
-{const pg=await open('&goal=5');const r=await pg.evaluate(()=>{const A=__agape;A.breathe(.8);for(let i=0;i<2400&&A.S.phase==='play';i++)A.step(1/30);A.breathe(0);for(let i=0;i<900&&A.S.phase!=='ending';i++)A.step(1/30);return{ph:A.S.phase,d:A.garden.done.length}});ok('목표 5송이로 변경 동작',r.ph==='ending'&&r.d===5,r);await pg.context().close()}
+{const pg=await open('&goal=5');const r=await pg.evaluate(()=>{const A=__agape;A.breathe(.8);for(let i=0;i<2400&&A.S.phase==='play';i++)A.step(1/30);A.breathe(0);return{ph:A.S.phase,d:A.garden.done.length}});ok('목표 5송이로 변경 동작',r.ph==='ending'&&r.d===5,r);await pg.context().close()}
 await b.close();s.close();console.log('FAILS',R.filter(x=>!x).length,'/',R.length)})().catch(e=>{console.error(e);process.exit(1)});

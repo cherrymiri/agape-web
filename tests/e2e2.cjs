@@ -27,7 +27,7 @@ for(const [n,w,h,touch] of [['PC',1280,720,false],['모바일',390,844,true]]){
  ok(n+' 꽃 형태 원본 유지',inv.worst<1e-4,inv);
  await pg.evaluate(()=>{__agape.draw()});await pg.screenshot({path:`/home/claude/agape-web/tests/f_${n}_garden.png`});
  // 한도 초과: 강제로 터뜨리지 않음
- const cap=await pg.evaluate(b=>{const A=__agape,B=A.bubbles,Q=A.quality.t,o=Q.bubbles,p0=B.stats.popped;Q.bubbles=4;A.CONFIG.density=4;A.CONFIG.popRatio=1;B.list.forEach(x=>{});let ex=0;for(let i=0;i<6;i++){b(.95,2);A.step(.1)}ex=B.list.filter(x=>x.released).length;Q.bubbles=o;A.CONFIG.density=1;A.CONFIG.popRatio=.8;A.step(30);return{ex,left:B.list.length}},bh);ok(n+' 한도 초과는 화면 밖 퇴장',cap.ex>0&&cap.left===0,cap);
+ const cap=await pg.evaluate(b=>{const A=__agape,B=A.bubbles,Q=A.quality.t,o=Q.bubbles,p0=B.stats.popped;Q.bubbles=4;A.CONFIG.density=4;A.CONFIG.popRatio=1;B.list.forEach(x=>{});let ex=0;for(let i=0;i<6;i++){b(.95,2);A.step(.1)}ex=B.list.filter(x=>x.released).length;Q.bubbles=o;A.CONFIG.density=.85;A.CONFIG.popRatio=.8;A.step(30);return{ex,left:B.list.length}},bh);ok(n+' 한도 초과는 화면 밖 퇴장',cap.ex>0&&cap.left===0,cap);
  await pg.evaluate(()=>{__agape.startEnding();__agape.step(11);__agape.resume()});await pg.waitForSelector('#ending:not([hidden])');
  const t=await pg.evaluate(()=>[...document.querySelectorAll('#ending p')].map(e=>e.textContent));ok(n+' 엔딩 문구',t[0]==='사랑을 주는 데 이유가 필요해?'&&t[1]==='Do I need a reason to give love?'&&t.length===2);
  await pg.waitForTimeout(2600);await pg.click('#againBtn');

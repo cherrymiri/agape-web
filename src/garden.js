@@ -4,6 +4,8 @@ import { GLASS_KEYS, applyGlass } from './glass_materials.js';
 
 // 정원이 완성되는 유리꽃 수. 기기 성능과 무관합니다. (주소에 ?goal=30 으로도 조절)
 export const FLOWER_GOAL = 20;
+export const TEMPO = { seed: [1, 1.8], bloom: 2.35 };   // 씨앗 이동(초), 꽃 개화(초). 최종 형태는 바뀌지 않음
+export const ZONES = { center: .4, side: .3 };          // 중앙과 좌우 각각의 꽃 비율
 
 export const hill = z => .24 * Math.max(0, -z);
 const KEYS = 'ABCDE'.split('');
@@ -94,41 +96,44 @@ export class Garden {
     this.total = 0;
   }
   get glow() { return Math.min(1, this.done.length / Math.min(this.goal, 40)); }
-  /** 피었거나 피는 중이거나 내려오는 중인 꽃: 목표 판단은 이 수로 함 */
+  /** 예약 수: 내려오는 씨앗 + 자라는 꽃 + 다 핀 꽃. 추가 씨앗 제한에만 쓰임. 엔딩은 done.length(완전 개화)로 판단 */
+  get reserved() { return this.committed; }
   get committed() { return this.done.length + this.growing.length + this.seeds.length; }
   get idle() { return !this.seeds.length && !this.growing.length; }
   /** camera에서 실제로 보이는 곳만 슬롯으로 등록 */
-  layout(camera, topNdc, block) {
+  /** 중앙에서 좌우로 번지는 군집 배치. 격자 없이 앞·중간·뒤에 흩뿌리고, 피어나는 순서도 중앙부터 */
+  layout(span, back) {
     if (this.total) return;
-    const slots = [], v = new THREE.Vector3(), SPACE = 1.2;
-    for (let r = 0; r < 14; r++) {
-      const z = 1.1 - r * 1.3;
-      for (let i = -12; i <= 12; i++) {
-        const x = (i + (r % 2) * .5) * SPACE + (Math.random() - .5) * .22;
-        const zz = z + (Math.random() - .5) * .3, y = hill(zz);
-        v.set(x - Math.sign(x) * -.6, y + 1.32, zz).project(camera);
-        const top = v.y, side = Math.abs(v.x);
-        const hid = block && v.x > block.x0 - block.pad && v.x < block.x1 + block.pad && top > block.y - .05;
-        if (top < topNdc && side < .97 && !hid) slots.push({ x, z: zz, y, r, taken: false });
+    const N = Math.min(this.goal, 120), k = Math.sqrt(N / 20), S = span * k, front = 1.5, B = back * k;
+    const zones = [[-.3, .3, ZONES.center], [-1, -.3, ZONES.side], [.3, 1, ZONES.side]];
+    const slots = [], space = .96;
+    const gap = (x, z) => { let m = 9; for (const s of slots) m = Math.min(m, Math.hypot(s.x - x, (s.z - z) * .62)); return m; };
+    for (const [a, c, share] of zones) for (let i = 0, n = Math.round(N * share); i < n; i++) {
+      let best = null, bs = -9;
+      for (let t = 0; t < 48; t++) {
+        const x = S * (a + (c - a) * Math.random()), z = front - (front + B) * Math.random() ** .85;
+        const g = gap(x, z), q = Math.min(g, space + .25) - (g < space ? 3 * (space - g) : 0) - .1 * Math.abs(x) / S + Math.random() * .12;
+        if (q > bs) { bs = q; best = { x, z }; }
       }
+      slots.push({ ...best, y: hill(best.z), taken: false, order: Math.abs(best.x) / S + .3 * (front - best.z) / (front + B) + Math.random() * .34 });
     }
-    this.slots = slots;
+    this.slots = slots.sort((p, q) => p.order - q.order);
   }
   pick(x) {
-    const free = this.slots.filter(s => !s.taken);
+    const free = this.slots.filter(s => !s.taken).slice(0, 4);
     if (!free.length) return this.recycle();
-    let best = null, bs = 1e9;
-    for (const s of free) { const q = s.r * 1.5 + Math.abs(s.x - x * .5) * .22 + Math.random() * 1.6; if (q < bs) { bs = q; best = s; } }
+    let best = free[0], bs = 1e9;
+    for (const s of free) { const q = Math.abs(s.x - x * .4) * .3 + Math.random(); if (q < bs) { bs = q; best = s; } }
     best.taken = true; return best;
   }
   recycle() {                                         // 슬롯이 가득 차면 가장 오래된 꽃의 자리를 내어줌
     const old = this.done.shift(); if (!old) return null;
     this.pools.removeOwner(old); this.lights.remove(old.halo); return old.slot;
   }
-  spawnSeed(pos, cap = 110) {
-    const live = this.done.length + this.growing.length + this.seeds.length;
-    const slot = live >= cap ? this.recycle() : this.pick(pos.x); if (!slot) return;
-    const s = { from: pos.clone(), pos: pos.clone(), t: 0, dur: 2.6 + Math.random() * 1.3, slot, sway: Math.random() * 6, col: [1, .88, .7], a: 1, size: .42 };
+  spawnSeed(pos) {
+    if (this.committed >= this.goal) return false;    // 예약은 목표를 넘지 않음. 넘는 방울은 씨앗 없이 사라짐
+    const slot = this.pick(pos.x); if (!slot) return false;
+    const s = { from: pos.clone(), pos: pos.clone(), t: 0, dur: TEMPO.seed[0] + Math.random() * (TEMPO.seed[1] - TEMPO.seed[0]), slot, sway: Math.random() * 6, col: [1, .88, .7], a: 1, size: .42 };
     this.lights.add(s); this.seeds.push(s);
   }
   plant(slot) {
@@ -139,8 +144,8 @@ export class Garden {
     o.position.set(slot.x, slot.y, slot.z); o.rotation.y = (Math.random() - .5) * .34; o.scale.setScalar(scale);
     this.group.add(o);
     const mx = new THREE.AnimationMixer(o), a = mx.clipAction(p.animations[0]);
-    a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.timeScale = .85; a.play();
-    const f = { obj: o, mixer: mx, action: a, key: k, mat: m, slot, scale, dur: p.animations[0].duration / .85, t: 0 };
+    a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.timeScale = p.animations[0].duration / TEMPO.bloom; a.play();
+    const f = { obj: o, mixer: mx, action: a, key: k, mat: m, slot, scale, dur: TEMPO.bloom, t: 0 };
     this.growing.push(f); this.total++;
     this.counts[k] = (this.counts[k] || 0) + 1; this.counts[m] = (this.counts[m] || 0) + 1;
     return f;

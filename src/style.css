@@ -1,6 +1,6 @@
 @import '@fontsource/gowun-batang/400.css';
 @import '@fontsource/gowun-batang/700.css';
-:root{--void:#05040a;--milk:#f1edf8;--dim:#b3abc8;--line:#ffffff2e;--plate:#1a162866;
+:root{--void:#05040a;--milk:#eef1fb;--dim:#b8bfe4;--line:#dfe4ff33;--plate:#14162866;
 --display:"Gowun Batang","Apple SD Gothic Neo","Noto Serif KR",serif}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;margin:0;background:var(--void);color:var(--milk);font-family:var(--display);overflow:hidden;overscroll-behavior:none;user-select:none;-webkit-user-select:none}
@@ -27,10 +27,16 @@ button:focus-visible{outline:2px solid var(--milk);outline-offset:3px}
 #meter{position:relative;height:8px;border-radius:4px;background:#ffffff14;overflow:hidden}
 #level{position:absolute;left:0;top:0;bottom:0;width:0;background:#d9ccff}
 #gate{position:absolute;top:0;bottom:0;width:2px;background:#fff}
-#ending{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 12vh);text-align:center;padding-inline:24px;opacity:0;transition:opacity 2.4s ease;pointer-events:none}
+#ending{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 7.5vh);text-align:center;padding-inline:24px;opacity:0;transition:opacity 1.5s ease;pointer-events:none}
 #ending.on{opacity:1}
-#ending .ko{margin:0;font-size:clamp(25px,3.6vw,44px);letter-spacing:.05em;word-break:keep-all;text-shadow:0 0 22px #05040a}
-#ending .en{margin:14px 0 26px;color:var(--dim);font-size:clamp(14px,1.5vw,18px);letter-spacing:.04em;text-shadow:0 0 16px #05040a}
-#ending button{pointer-events:none}
+#ending::before{content:"";position:absolute;left:50%;top:-34%;width:min(760px,100%);height:150%;transform:translateX(-50%);background:radial-gradient(closest-side,#a9b0ff14,#c8b8ff0a 55%,#0000);pointer-events:none}
+#ending .ko{position:relative;margin:0;font-size:clamp(25px,3.6vw,44px);letter-spacing:.05em;word-break:keep-all;color:#f2f4fd;
+  background:linear-gradient(100deg,#f4f6ff 0%,#f4f6ff 34%,#dcd6ff 44%,#cfe6ff 50%,#ece4ff 56%,#f4f6ff 66%,#f4f6ff 100%) 0 0/260% 100%;
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 7px #e4e6ff4d) drop-shadow(0 0 22px #b8b2ff33);animation:shimmer 11s ease-in-out infinite alternate}
+#ending .en{position:relative;margin:12px 0 22px;color:#c3cbee;font-size:clamp(14px,1.5vw,18px);letter-spacing:.04em;filter:drop-shadow(0 0 8px #b8c0ff33)}
+#ending button{position:relative;pointer-events:none;color:#eef1fb;background:#d6dcff12;border-color:#d9dfff42;box-shadow:0 0 18px #aab2ff1f}
 #ending.on button{pointer-events:auto}
-@media (prefers-reduced-motion:reduce){#title,#hint,#ending{transition:none}}
+#ending button:hover{border-color:#e6eaff99;background:#d6dcff1f}
+@keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}
+@media (prefers-reduced-motion:reduce){#title,#hint,#ending{transition:none}#ending .ko{animation:none}}
