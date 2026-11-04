@@ -8,7 +8,7 @@ import { createGlassMaterials, createWandMaterial, createGlassEnvironment, apply
 import { BreathMic } from './breath.js';
 import { Bubbles, CONFIG } from './bubbles.js';
 import { Quality, TIERS } from './quality.js';
-import { Garden, hill } from './garden.js';
+import { Garden, GARDEN } from './garden.js';
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -46,62 +46,37 @@ const quality = new Quality(t => { tierNow = t; if (ready) { buildPipeline(); fi
   params.has('tier') ? +params.get('tier') : undefined);
 var ready = false;
 
-// ─── 바닥과 공간의 빛 ──────────────────────────────────
-const groundMat = new THREE.ShaderMaterial({
-  uniforms: { uGlow: { value: 0 }, uFocus: { value: new THREE.Vector3(0, 0, 3) }, uFocusA: { value: 1 } },
-  vertexShader: `varying vec3 w; void main(){ vec4 p=modelMatrix*vec4(position,1.); w=p.xyz; gl_Position=projectionMatrix*viewMatrix*p; }`,
-  fragmentShader: `uniform float uGlow,uFocusA; uniform vec3 uFocus; varying vec3 w;
-    void main(){
-      float d=length((w.xz-uFocus.xz)*vec2(.42,.62));
-      float pool=exp(-d*d*.9)*.030*uFocusA;
-      float span=exp(-pow(w.x*.07,2.))*(.004+.052*uGlow);
-      float fade=smoothstep(-15.,-5.,w.z);
-      vec3 bg=vec3(.0015,.0012,.0030)+vec3(.0075,.0060,.0150)*uGlow*exp(-pow(w.x*.05,2.))*exp(-max(w.y-1.,0.)*.12);
-      vec3 c=vec3(.0045,.0038,.0085)+vec3(.46,.40,.78)*pool+vec3(.50,.42,.76)*span;
-      gl_FragColor=vec4(mix(bg,c,fade),1.);
-      #include <tonemapping_fragment>
-      #include <colorspace_fragment>
-    }`,
-});
-{
-  const g = new THREE.PlaneGeometry(120, 60, 1, 70); g.rotateX(-Math.PI / 2); g.translate(0, 0, -6);
-  const p = g.attributes.position; for (let i = 0; i < p.count; i++) p.setY(i, hill(p.getZ(i)) - .02);
-  scene.add(new THREE.Mesh(g, groundMat));
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(160, 90), groundMat); back.position.set(0, 20, -36); scene.add(back);
-}
 // ─── 카메라 맞춤 ──────────────────────────────────────
-const view = { intro: { pos: new THREE.Vector3(), at: new THREE.Vector3() }, garden: { pos: new THREE.Vector3(), at: new THREE.Vector3() }, ringNdc: new THREE.Vector2() };
+const view = { garden: { pos: new THREE.Vector3(), at: new THREE.Vector3() }, ringNdc: new THREE.Vector2() };
 function fit() {
   const w = innerWidth, h = innerHeight, a = w / h, tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   renderer.setPixelRatio(pixelRatio()); renderer.setSize(w, h, false);
   composer?.setSize(w, h); composer?.setPixelRatio?.(pixelRatio());
   camera.aspect = a; camera.updateProjectionMatrix();
   const portrait = a < .85;
-  // 정원: 너비 최소 7.6칸, 높이 최소 9칸을 보장
-  const D = Math.max(4.5 / tan, 3.8 / (tan * a));
+  const D = Math.max(3.25 / tan, 3.4 / (tan * a));
   const halfH = D * tan;
-  view.garden.at.set(0, halfH * .86 - .4, 0);
-  view.garden.pos.set(0, view.garden.at.y + D * .23, D);
-  // 시작 화면: 놓인 막대에 가까이
-  const Di = Math.max(11, 3.1 / (tan * a));
-  view.intro.at.set(0, portrait ? 1.0 : 1.5, 3.2);
-  view.intro.pos.set(0, view.intro.at.y + Di * .36, 3.2 + Di);
-  view.ringNdc.set(portrait ? .34 : .4, portrait ? .3 : .36);   // 화면 오른쪽 약 65~75% 지점
-  const hwI = Di * tan * a;                                      // 놓인 막대도 오른쪽에
-  POSE.rest.p.x = portrait ? hwI * .22 - .55 : hwI * .4 - 1.0;
+  view.garden.at.set(0, halfH * .78 - .45, 0);
+  view.garden.pos.set(0, view.garden.at.y + D * .2, D);
+  view.ringNdc.set(portrait ? .34 : .4, portrait ? .38 : .42);   // 화면 오른쪽 약 65~75% 지점
   updateUpPose();
-  view.bubbleK = portrait ? .78 : 1;
-  garden && layoutGarden();
+  // 놓인 막대: 오른쪽 아래, 꽃봉오리 앞
+  const v = new THREE.Vector3(portrait ? .52 : .6, portrait ? -.74 : -.6, .5).unproject(camera).sub(camera.position).normalize();
+  POSE.rest.p.copy(camera.position).addScaledVector(v, (3.2 - camera.position.z) / v.z);
+  view.bubbleK = portrait ? .66 : .8;
+  camera.position.copy(view.garden.pos); camera.lookAt(view.garden.at); camAt.copy(view.garden.at);
   lights();
 }
 function lights() { if (garden) garden.lights.mat.uniforms.uScale.value = innerHeight * renderer.getPixelRatio() / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))); }
 function layoutGarden() {
   const portrait = innerHeight > innerWidth;
-  garden.layout(portrait ? 2.5 : Math.min(4.5, 4.5 * camera.aspect / 1.6), portrait ? 6.6 : 3.2);
+  garden.layout(portrait ? 2.7 : Math.min(5.6, 5.6 * camera.aspect / 1.6), portrait ? 6.8 : 3.6);
+  garden.needK = (+params.get('need') || 1) * (portrait ? .84 : 1);
+  garden.plantAll();
 }
 /** 다 핀 꽃들이 화면 중심에 오도록 엔딩 구도를 계산. 문구 자리는 위쪽에 남김 */
 function solveEnd() {
-  const portrait = camera.aspect < .85, pts = [], flowers = garden.done.length ? garden.done.map(f => f.slot) : garden.slots.slice(0, garden.goal);
+  const portrait = camera.aspect < .85, pts = [], flowers = garden.slots;
   for (const s of flowers) for (const dx of [-.62, .62]) for (const dy of [0, 1.42]) pts.push(new THREE.Vector3(s.x + dx, s.y + dy, s.z));
   const box = new THREE.Box3().setFromPoints(pts), c = box.getCenter(new THREE.Vector3());
   const yHi = portrait ? .4 : .36, yLow = portrait ? -.8 : -.84, xLim = .92;
@@ -130,7 +105,7 @@ wand.scale.setScalar(W); scene.add(wand);
 const hit = new THREE.Mesh(new THREE.CapsuleGeometry(.5, 1.5, 2, 8), new THREE.MeshBasicMaterial({ visible: false }));
 hit.position.y = -.7; wand.add(hit);
 const POSE = {
-  rest: { p: new THREE.Vector3(.1, .13, 3.2), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, .92, 0)).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)) },
+  rest: { p: new THREE.Vector3(.1, .13, 3.2), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -.92, 0)).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)) },
   up: { p: new THREE.Vector3(), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(.06, -2.42, .1)) },
 };
 function updateUpPose() {
@@ -141,13 +116,13 @@ function updateUpPose() {
 }
 
 const bubbles = new Bubbles({ scene, wand, W, ringR: RING_R });
-if (params.has('pop')) CONFIG.popRatio = clamp(+params.get('pop'), 0, 1);
+if (params.has('drift')) CONFIG.driftRatio = clamp(+params.get('drift'), 0, 1);
 
 // ─── 상태 ────────────────────────────────────────────
 const S = {
   phase: 'loading', up: false, lift: 0, camT: 0, film: null, form: 0, h: 0, peak: 0, blowT: 0,
   time: 0, sim: { on: false, strength: 0 }, hold: false, micDenied: false, flowersSeen: 0,
-  endT: 0, exitT: 0, noMic: !!window.AGAPE_NO_MIC,
+  endT: 0, exitT: 0, quietT: 0, readyT: 0, noteT: -1, playT: 0, noMic: !!window.AGAPE_NO_MIC,
 };
 let mic = null, garden = null;
 const sens = (() => { try { return +(localStorage.getItem('agape.sens') ?? 50); } catch { return 50; } })();
@@ -183,7 +158,7 @@ function micFail() { S.micDenied = true; hint('아래 버튼을 길게 누르면
 
 function syncUi() {
   const live = S.phase === 'play', micOn = !!mic?.ready;
-  $('title').classList.toggle('small', S.up || S.phase !== 'play' || garden?.total > 0);
+  $('title').classList.toggle('small', !!(S.up || S.phase !== 'play' || S.blown));
   $('micBtn').hidden = !(live && S.up && !micOn && !S.micDenied && !S.noMic);
   $('holdBtn').hidden = !(live && S.up && (S.micDenied || S.noMic));
   $('setBtn').hidden = !(live && S.up && !window.AGAPE_NO_MIC);
@@ -200,7 +175,7 @@ async function toggleWand() {
       else hint('막대를 들었어요. 마이크를 켜고 숨을 불어 보세요');
     } else if (mic?.ready) hint(S.blown ? '' : '마이크에 ‘후—’ 하고 불어 보세요');
     else if (!S.blown) hint('아래 버튼을 길게 눌러 불어 보세요');
-  } else hint(garden.total ? '' : '막대를 눌러 들어 올리세요');
+  } else hint(S.blown ? '' : '막대를 눌러 들어 올리세요');
   syncUi();
 }
 
@@ -248,17 +223,19 @@ function startEnding() {
   solveEnd(); bubbles.settle();
 }
 function resetAll() {
-  bubbles.clear(); garden.reset(); layoutGarden();
-  Object.assign(S, { phase: 'play', up: false, lift: 0, camT: 0, h: 0, peak: 0, blowT: 0, hold: false, sim: { on: false, strength: 0 }, noMic: !!window.AGAPE_NO_MIC, micDenied: false, blown: false, endT: 0, exitT: 0 });
+  bubbles.clear(); garden.reset(); layoutGarden(); $('note').classList.remove('on');
+  Object.assign(S, { phase: 'play', up: false, lift: 0, camT: 0, h: 0, peak: 0, blowT: 0, hold: false, sim: { on: false, strength: 0 }, noMic: !!window.AGAPE_NO_MIC, micDenied: false, blown: false, endT: 0, exitT: 0, quietT: 0, readyT: 0, noteT: -1, playT: 0 });
   holdEnd(); hold(false); mic?.stop(); mic = null;
   $('ending').classList.remove('on'); $('ending').hidden = true; $('micState').textContent = '';
   hint('막대를 눌러 들어 올리세요'); syncUi();
 }
 
 // ─── 프레임 ──────────────────────────────────────────
-const END_TEXT_AT = 2.5;                         // 마지막 꽃 개화 후 문구가 나타나기까지 (초)
-const END_CAMERA_TIME = 2.4;                     // 카메라가 정원 구도로 옮겨 가는 시간 (초)
+const END_TEXT_AT = 3.6;                         // 마지막 꽃 개화 후 문구가 나타나기까지 (초)
+const END_CAMERA_TIME = 3;                     // 카메라가 정원 구도로 옮겨 가는 시간 (초)
 const WAND_EXIT_TIME = 1.5;                      // 막대가 오른쪽으로 물러나는 시간 (초). 이 동안 방울이 계속 나옴
+const QUIET_BEFORE_END = 2;                      // 정원이 자란 뒤 숨이 이만큼 멎으면 엔딩 (초)
+const READY_MAX_WAIT = 12;                       // 계속 불고 있어도 이 시간이 지나면 막대가 천천히 물러남 (초)
 const AFTERBREATH = .6;                          // 입력이 없어도 퇴장 중 이어지는 마지막 숨의 세기
 const camAt = new THREE.Vector3(), haloTmp = new THREE.Vector3();
 function step(dt) {
@@ -266,8 +243,6 @@ function step(dt) {
   mic?.update(dt);
   S.lift += ((S.up ? 1 : 0) - S.lift) * Math.min(1, dt * 3.1);
   if (Math.abs((S.up ? 1 : 0) - S.lift) < .002) S.lift = S.up ? 1 : 0;
-  const hasGarden = garden.total > 0 || bubbles.stats.born > 0;
-  S.camT += ((S.up || hasGarden ? 1 : 0) - S.camT) * Math.min(1, dt * 1.5);
 
   // 카메라
   if (S.phase === 'ending') {
@@ -279,9 +254,7 @@ function step(dt) {
     camera.lookAt(camAt);
     if (S.endT > END_TEXT_AT && $('ending').hidden) { $('ending').hidden = false; requestAnimationFrame(() => $('ending').classList.add('on')); }
   } else {
-    const t = ease(S.camT);
-    camera.position.lerpVectors(view.intro.pos, view.garden.pos, t);
-    camAt.lerpVectors(view.intro.at, view.garden.at, t); camera.lookAt(camAt);
+    camera.position.copy(view.garden.pos); camAt.copy(view.garden.at); camera.lookAt(camAt);
   }
 
   // 막대
@@ -294,18 +267,23 @@ function step(dt) {
     if (S.exitT >= 1 && !wasOut) { holdEnd(); hold(false); mic?.stop(); }   // 막대가 사라진 순간 입력 종료
   }
   wand.quaternion.slerpQuaternions(POSE.rest.q, POSE.up.q, e);
-  groundMat.uniforms.uFocus.value.copy(POSE.rest.p);
-  groundMat.uniforms.uFocusA.value = 1 - e * .9 * (1);
-  groundMat.uniforms.uGlow.value += (garden.glow - groundMat.uniforms.uGlow.value) * Math.min(1, dt);
 
   const exiting = S.phase === 'ending' && S.exitT < 1;
-  const blow = exiting ? Math.max(breath(dt), AFTERBREATH * (1 - .55 * S.exitT)) : breath(dt);
+  const input = breath(dt), blow = exiting ? Math.max(input, AFTERBREATH * (1 - .55 * S.exitT)) : input;
   bubbles.update(dt, blow, {
     active: (S.phase === 'play' || exiting) && S.up && S.lift > .96, lift: S.lift, camera, maxBubbles: quality.t.bubbles,
-    spawnSeed: p => garden.spawnSeed(p), portraitK: view.bubbleK,
+    garden, portraitK: view.bubbleK,
   });
-  garden.update(dt);
-  if (S.phase === 'play' && garden.done.length >= garden.goal) startEnding();
+  garden.update(dt, S.phase === 'ending');
+  if (S.phase === 'play') {
+    if (bubbles.stats.born) S.playT += dt;
+    // 체험 중 문구: 닿는 모습과 떠나는 모습을 어느 정도 본 뒤 한 번만
+    if (S.noteT < 0 && bubbles.stats.hits >= 6 && bubbles.stats.flew >= 2) { S.noteT = 0; $('note').classList.add('on'); }
+    if (S.noteT >= 0 && S.noteT < 7.5) { S.noteT += dt; if (S.noteT >= 7) $('note').classList.remove('on'); }
+    // 엔딩 판단: 정원이 충분히 자랐고, 관람객의 숨이 잦아들었을 때. 계속 불고 있으면 기다림
+    S.quietT = input > 0 ? 0 : S.quietT + dt;
+    if (garden.ready) { S.readyT += dt; if (S.quietT > QUIET_BEFORE_END || S.readyT > READY_MAX_WAIT) startEnding(); }
+  }
   if (S.phase === 'ending' && S.exitT >= 1 && !bubbles.buds.length) bubbles.hideRing();
   if (!S.blown && bubbles.stats.born) { S.blown = true; hint(''); }
 
@@ -313,7 +291,6 @@ function step(dt) {
   if (mic?.ready && !$('settings').hidden) {
     const g = mic.gate; $('level').style.width = clamp(g.level / 40, 0, 1) * 100 + '%'; $('gate').style.left = g.gateDb / 40 * 100 + '%';
   }
-  if (garden.total && !$('title').classList.contains('small')) syncUi();
 }
 
 let last = 0, frozen = false;
@@ -340,15 +317,14 @@ const load = u => {
   applyGlass(w.scene, createWandMaterial()); wand.add(w.scene);
   garden = new Garden(scene, P, createGlassMaterials());
   S.bubbles = bubbles;
-  if (params.has('goal')) garden.goal = Math.max(1, Math.round(+params.get('goal')));
+  if (params.has('count')) garden.goal = Math.max(1, Math.round(+params.get('count')));
   ready = true; buildPipeline(); fit(); updateUpPose();
   addEventListener('resize', () => { fit(); updateUpPose(); });
-  S.phase = 'play'; camera.position.copy(view.intro.pos); camera.lookAt(view.intro.at);
+  S.phase = 'play'; layoutGarden();
   hint('막대를 눌러 들어 올리세요'); syncUi();
 
   // 셰이더를 미리 컴파일해 첫 꽃이 필 때 멈칫하지 않게 함
-  const warm = new THREE.Group(); for (const m of Object.values(garden.mats)) { const o = new THREE.Mesh(P.A.scene.children[0].children?.[0]?.geometry ?? new THREE.SphereGeometry(.1), m); warm.add(o); }
-  scene.add(warm); warm.position.set(0, -50, 0); renderer.compile(scene, camera); scene.remove(warm);
+  renderer.compile(scene, camera);
 
   renderer.setAnimationLoop(loop);
   if (DEBUG) {

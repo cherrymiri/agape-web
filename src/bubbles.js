@@ -3,19 +3,17 @@
 // 생성: 고정 타이머가 없습니다. 숨의 세기가 '생성 밀도(λ)'를 정하고, 숨 안의 국면(부풂·연달아·잔방울·쉼)과
 //       천천히 요동치는 돌풍값이 그 밀도를 흔듭니다. 실제 생성 시각은 그 밀도의 확률 과정에서 나옵니다.
 // 성장: 모든 방울은 고리의 막 위 한 점에서 부풀어 오릅니다. 들어오는 공기량만큼 자라고, 숨이 멎으면 그 크기로 떨어집니다.
-// 결말: 방울마다 태어날 때 '터짐/날아감'과 수명을 받습니다. 터진 방울만 씨앗을 남깁니다.
+// 결말: 방울마다 태어날 때 '꽃에게 닿음/멀리 떠남'이 정해집니다. 떠나는 방울은 터지지 않고 아무것도 남기지 않습니다.
 import * as THREE from 'three';
 import { createFilm } from './film.js';
 
 export const CONFIG = {
-  popRatio: .8,        // 화면 안에서 터지는 비율. 나머지는 터지지 않고 화면 밖으로 날아감 (주소에 ?pop=0.7 로도 조절)
+  driftRatio: .3,      // 꽃에 닿지 않고 터지지도 않은 채 멀리 떠나는 비율 (주소 ?drift=0.25)
   sizeMin: .06,        // 방울 반지름 범위 (꽃 머리 지름 ≈ 1)
   sizeMax: 1.3,
   maxBuds: 5,          // 고리에서 동시에 부풀 수 있는 방울 수
-  density: .85,        // 전체 생성 밀도 배율
-  life: [              // [비중, 최소초, 최대초]
-    [.26, .9, 2.2], [.46, 3, 6], [.28, 7, 12],
-  ],
+  density: .52,        // 전체 생성 밀도 배율
+  seekDelay: [.2, 2.4],  // 태어난 뒤 꽃 쪽으로 기울기 시작하는 시간 범위(초)
 };
 
 const rnd = (a = 1, b) => b === undefined ? Math.random() * a : a + Math.random() * (b - a);
@@ -35,7 +33,7 @@ export class Bubbles {
     this.scene = scene; this.wand = wand; this.W = W; this.ringR = ringR;
     this.list = []; this.buds = []; this.ring = null; this.form = 0;
     this.since = 0; this.excite = 0; this.gust = 0; this.t = 0; this.prevB = 0; this.breathT = 0; this.phase = null; this.phaseLeft = 0; this.onset = true;
-    this.stats = { born: 0, popped: 0, flew: 0, sizes: [], times: [], lives: [] };
+    this.stats = { born: 0, hits: 0, flew: 0, sizes: [], times: [], fates: [] };
     this.pos = new THREE.Vector3(); this.ndc = new THREE.Vector3();
   }
 
@@ -50,16 +48,13 @@ export class Bubbles {
     this.hideRing();
     for (const b of this.list) { this.scene.remove(b.m); b.m.material.dispose(); }
     this.endMode = false; this.list = []; this.gust = 0; this.excite = 0; this.onset = true; this.prevB = 0; this.breathT = 0; this.phase = null;
-    this.stats = { born: 0, popped: 0, flew: 0, sizes: [], times: [], lives: [] };
+    this.stats = { born: 0, hits: 0, flew: 0, sizes: [], times: [], fates: [] };
   }
 
-  /** 엔딩: 떠 있는 방울은 곧 흩어지고, 퇴장 중 태어나는 방울도 오래 머물지 않음 (문구 자리를 비움) */
+  /** 엔딩: 떠 있는 방울은 마저 꽃에 닿거나 멀리 떠남. 퇴장 중 태어나는 방울은 그대로 떠남 */
   settle() {
     this.endMode = true;
-    for (const b of this.list) {
-      if (b.fate === 'pop') b.life = Math.min(b.life, b.age + rnd(.3, 2.2));
-      else b.exit.multiplyScalar(2.2);
-    }
+    for (const b of this.list) { if (b.fate === 'seek') b.delay = 0; else b.exit.multiplyScalar(1.8); }
   }
 
   // ── 숨 → 생성 밀도 ──
@@ -130,23 +125,18 @@ export class Bubbles {
       swayA: Math.random() < .35 ? rnd(.5, 1.4) : rnd(.04, .4), swayF: rnd(.35, 1.7), swayP: rnd(6.2832),
       drift: new THREE.Vector3(), driftS: rnd(.15, .75), driftK: rnd(.25, 1.2),   // 움직임의 변화
     };
-    // 결말
-    if (Math.random() < CONFIG.popRatio) {
-      o.fate = 'pop';
-      let u2 = rnd(CONFIG.life.reduce((a, l) => a + l[0], 0)), L = CONFIG.life[1];
-      for (const l of CONFIG.life) { u2 -= l[0]; if (u2 <= 0) { L = l; break; } }
-      o.life = rnd(L[1], L[2]) * (.72 + .55 * Math.min(rW, .8)) * logn(.12);
-    } else this.setFlyer(o);
-    if (this.endMode) { if (o.fate === 'pop') o.life = rnd(.5, 1.7); else o.exit.multiplyScalar(2.2); }
+    // 결말: 꽃에게 닿거나, 아무것도 남기지 않고 떠남
+    if (Math.random() >= CONFIG.driftRatio && !this.endMode) { o.fate = 'seek'; o.target = this.pickTarget(); o.delay = rnd(...CONFIG.seekDelay); o.seekK = rnd(1.8, 3.6) * (.8 / this.fitK) ** 2; }
+    else { this.setFlyer(o); if (this.endMode) o.exit.multiplyScalar(2.2); }
     this.list.push(o);
     this.stats.born++; this.stats.sizes.push(+rW.toFixed(3)); this.stats.times.push(+this.t.toFixed(3));
-    this.stats.lives.push(o.fate === 'pop' ? +o.life.toFixed(2) : -1);
+    this.stats.fates.push(o.fate);
     if (rW > .5 && this.ring) this.form = Math.min(this.form, .5);  // 큰 방울이 떨어지면 막이 잠깐 다시 차오름
   }
   setFlyer(o) {
-    o.fate = 'fly'; o.life = 1e9;
-    const up = rnd(-.05, .75);
-    o.exit = new THREE.Vector3(-1, up, rnd(-.2, .1)).normalize().multiplyScalar(rnd(.5, 1.5));
+    o.fate = 'fly';
+    const up = rnd(.25, 1.1);                                    // 꽃밭 위로 높이 지나 화면 밖으로
+    o.exit = new THREE.Vector3(rnd(-1, -.35), up, rnd(-.2, .1)).normalize().multiplyScalar(rnd(.45, 1.2));
   }
 
   wind(p, t, out) {
@@ -157,8 +147,8 @@ export class Bubbles {
   }
 
   /** b: 숨 세기 0~1 / active: 막대가 들려 있고 불 수 있는 상태 */
-  update(dt, breath, { active, lift, camera, maxBubbles, spawnSeed, portraitK = 1 }) {
-    this.t += dt; this.fitK = portraitK; this.fitV = portraitK;
+  update(dt, breath, { active, lift, camera, maxBubbles, garden, portraitK = 1 }) {
+    this.t += dt; this.fitK = portraitK; this.fitV = portraitK; this.pickTarget = () => garden.pickTarget();
     const b = active ? breath : 0, t = this.t;
     // 고리 막
     if (this.ring) {
@@ -186,14 +176,14 @@ export class Bubbles {
     this.prevB = b;
     this.grow(dt, b);
 
-    this.move(dt, camera, maxBubbles, spawnSeed);
+    this.move(dt, camera, maxBubbles, garden);
   }
 
-  move(dt, camera, maxBubbles, spawnSeed) {
+  move(dt, camera, maxBubbles, garden) {
     const t = this.t, w = (this._w ||= new THREE.Vector3());
     // 동시 표시 한도를 넘으면 가장 오래된 방울을 터뜨리지 않고 내보냄
-    let live = 0; for (const b of this.list) if (b.fate === 'pop' && b.pop < 0) live++;
-    if (live > maxBubbles) { const o = this.list.find(b => b.fate === 'pop' && b.pop < 0 && b.close >= 1); if (o) { this.setFlyer(o); o.exit.multiplyScalar(1.5); o.released = true; } }
+    let live = 0; for (const b of this.list) if (b.fate === 'seek' && b.pop < 0) live++;
+    if (live > maxBubbles) { const o = this.list.find(b => b.fate === 'seek' && b.pop < 0 && b.close >= 1); if (o) { this.setFlyer(o); o.exit.multiplyScalar(1.5); o.released = true; } }
 
     for (let i = this.list.length - 1; i >= 0; i--) {
       const b = this.list[i], u = b.u; b.age += dt; u.uTime.value = t;
@@ -209,14 +199,19 @@ export class Bubbles {
       d.x += -b.driftK * d.x * dt + gauss() * k; d.y += -b.driftK * d.y * dt + gauss() * k; d.z += -b.driftK * d.z * dt + gauss() * k * .5;
       const sway = Math.cos(b.age * b.swayF * 6.2832 * .32 + b.swayP) * b.swayA;
       const ax = b.drag * (w.x * b.gain - v.x) + d.x + sway;
-      const ay = b.drag * (b.rise + w.y * b.gain - v.y) + d.y;
+      let ay = b.drag * (b.rise + w.y * b.gain - v.y) + d.y;
+      if (b.fate === 'seek' && b.age > b.delay && b.pop < 0) {   // 꽃 쪽으로 서서히 기울어짐: 맞히는 게임이 아니라 바람이 데려가는 느낌
+        const pull = Math.min((b.age - b.delay) / 2, 1) * (b.seekK + (b.age > 9 ? (b.age - 9) * .6 : 0));
+        const dx = b.target.headPos.x - p.x, dy = b.target.headPos.y - p.y, dz = b.target.headPos.z - p.z, l = Math.hypot(dx, dy, dz) + .001;
+        v.x += dx / l * pull * dt; v.z += dz / l * pull * dt; ay = d.y * .6 + b.drag * (w.y * b.gain * .4 - v.y) + dy / l * pull * 1.1;
+      }
       const az = b.drag * (w.z * b.gain - v.z) + d.z;
       v.x += ax * dt; v.y += ay * dt; v.z += az * dt;
 
       this.ndc.copy(p).project(camera);
       const nx = this.ndc.x, ny = this.ndc.y, depth = Math.max(camera.position.distanceTo(p), 1);
       const hh = depth * Math.tan(camera.fov * Math.PI / 360), hw = hh * camera.aspect;
-      if (b.fate === 'pop') {                                  // 터질 방울은 화면 안에 머무름
+      if (b.fate === 'seek') {                                 // 꽃을 향하는 방울은 화면 안에 머무름
         const mx = 1 - (b.r + .15) / hw, my = 1 - (b.r + .15) / hh;
         const zone = mx - .16;                                 // 벽 근처에서 부드럽게 속도를 줄이고 되돌림
         if (Math.abs(nx) > zone) {
@@ -225,8 +220,7 @@ export class Bubbles {
           v.x -= sx * e * e * 2.4 * dt;
         }
         if (ny > my) v.y -= (ny - my) * 12 * dt;
-        if (ny < -.45) v.y += (-.45 - ny) * 6 * dt;
-        if (p.z > 3.6) v.z -= (p.z - 3.6) * 3 * dt; if (p.z < -2) v.z += (-2 - p.z) * 3 * dt;
+        if (p.z > 3.6) v.z -= (p.z - 3.6) * 3 * dt;
       } else {                                                 // 날아가는 방울은 점점 바람을 타고 화면 밖으로
         const ramp = clamp((b.age - .4) / 2.2, 0, 1);
         v.addScaledVector(b.exit, ramp * dt * 1.2);
@@ -236,14 +230,16 @@ export class Bubbles {
 
       if (b.fate === 'fly') {
         const out = Math.abs(nx) > 1 + (b.r + .3) / hw || ny > 1 + (b.r + .3) / hh || ny < -1 - (b.r + .3) / hh;
-        if (b.age > 26) u.uAlpha.value = Math.max(0, u.uAlpha.value - dt / 1.5);    // 안전장치
-        if (out || u.uAlpha.value <= 0) { this.remove(i); this.stats.flew++; }
+        if (out) { this.remove(i); this.stats.flew++; }      // 화면 밖으로 완전히 나간 뒤에만 정리
         continue;
       }
-      if (b.pop < 0 && b.age > b.life && b.close >= 1) b.pop = 0;
+      if (b.pop < 0 && b.close >= 1 && b.age > .5) {
+        const f = garden.touching(p, b.r, b.target);
+        if (f) { b.pop = 0; garden.burst(p, b.r, f, this.fitK / .8); this.stats.hits++; }   // 닿는 순간 비눗막이 물방울이 됨
+      }
       if (b.pop >= 0) {
         b.pop += dt / (.2 + .26 * Math.min(b.r, 1)); u.uPop.value = Math.min(b.pop, 1);
-        if (b.pop >= 1) { spawnSeed(p.clone()); this.stats.popped++; this.remove(i); }   // 꽃 예약이 다 찼으면 씨앗 없이 사라짐
+        if (b.pop >= 1) this.remove(i);
       }
     }
   }

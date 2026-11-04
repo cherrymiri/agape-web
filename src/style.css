@@ -13,6 +13,9 @@ html,body{height:100%;margin:0;background:var(--void);color:var(--milk);font-fam
 #title.small{opacity:0;transform:translateY(-10px)}
 #hint{position:fixed;left:24px;right:24px;bottom:calc(env(safe-area-inset-bottom,0px) + 92px);margin:0;text-align:center;color:var(--dim);font-size:15px;letter-spacing:.06em;pointer-events:none;opacity:0;transition:opacity .9s ease}
 #hint.on{opacity:1}
+#lead{margin-top:clamp(20px,4vh,36px)!important;color:#e4e8fa!important;font-size:clamp(17px,2vw,24px)!important;letter-spacing:.1em!important;text-indent:.1em!important;filter:drop-shadow(0 0 10px #b8c0ff40)}
+#note{position:fixed;left:24px;right:24px;top:calc(env(safe-area-inset-top,0px) + 6vh);margin:0;text-align:center;color:#d9def5;font-size:clamp(14px,1.6vw,18px);letter-spacing:.05em;word-break:keep-all;line-height:1.6;pointer-events:none;opacity:0;transition:opacity 1.8s ease;filter:drop-shadow(0 0 9px #b8c0ff33)}
+#note.on{opacity:1}
 #actions{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 28px);display:flex;justify-content:center;gap:10px;flex-wrap:wrap;padding-inline:72px;pointer-events:none}
 button{font:inherit;color:var(--milk);background:var(--plate);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:999px;padding:10px 20px;min-height:42px;font-size:15px;letter-spacing:.05em;cursor:pointer;pointer-events:auto;touch-action:manipulation;transition:background .3s,border-color .3s}
 button:hover{border-color:#ffffff70}
@@ -38,5 +41,6 @@ button:focus-visible{outline:2px solid var(--milk);outline-offset:3px}
 #ending button{position:relative;pointer-events:none;color:#eef1fb;background:#d6dcff12;border-color:#d9dfff42;box-shadow:0 0 18px #aab2ff1f}
 #ending.on button{pointer-events:auto}
 #ending button:hover{border-color:#e6eaff99;background:#d6dcff1f}
+@media (max-width:600px){#ending .ko{font-size:5.3vw;letter-spacing:.02em}}
 @keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}
 @media (prefers-reduced-motion:reduce){#title,#hint,#ending{transition:none}#ending .ko{animation:none}}
