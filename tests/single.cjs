@@ -1,6 +1,6 @@
 const {launch}=require('./lib.cjs');
 (async()=>{const b=await launch(['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream','--use-file-for-fake-audio-capture=/home/claude/agape-web/tests/mic.wav','--allow-file-access-from-files']);
-for(const [n,f] of [['artifact','artifact.html'],['file','AGAPE_테스트.html']]){
+for(const [n,f] of [['artifact','artifact.html'],['file','AGAPE_테스트3.html']]){
  const pg=await b.newPage({viewport:{width:1100,height:680}});const errs=[];pg.on('pageerror',e=>errs.push(e.message));pg.on('console',m=>{if(m.type()=='error'&&!/ERR_|Failed to load/.test(m.text()))errs.push(m.text())});
  if(n=='artifact'){await pg.setContent('<!doctype html><meta charset=utf-8>'+require('fs').readFileSync('/home/claude/agape-web/single/'+f,'utf8'))}else await pg.goto('file:///home/claude/agape-web/single/'+encodeURIComponent(f));
  await pg.waitForFunction(()=>!document.getElementById('hint').textContent.includes('불러오지')&&document.getElementById('hint').textContent.length>0,{timeout:60000});

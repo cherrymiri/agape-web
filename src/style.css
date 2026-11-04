@@ -17,7 +17,7 @@ html,body{height:100%;margin:0;background:var(--void);color:var(--milk);font-fam
 button{font:inherit;color:var(--milk);background:var(--plate);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:999px;padding:10px 20px;min-height:42px;font-size:15px;letter-spacing:.05em;cursor:pointer;pointer-events:auto;touch-action:manipulation;transition:background .3s,border-color .3s}
 button:hover{border-color:#ffffff70}
 button:focus-visible{outline:2px solid var(--milk);outline-offset:3px}
-#holdBtn{touch-action:none}
+#holdBtn{touch-action:none;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
 #holdBtn.on{background:#efe8ff2e;border-color:var(--milk)}
 #setBtn{position:fixed;right:max(20px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 28px);width:42px;height:42px;padding:0;display:grid;place-items:center}
 #setBtn[hidden],#settings[hidden],#ending[hidden]{display:none}

@@ -138,12 +138,15 @@ $('sens').value = sens;
 
 function breath(dt) {
   if (S.sim.on) return S.sim.strength;
-  if (S.hold) {                                   // 버튼 입력에도 실제 숨처럼 세기의 굴곡을 줌
+  // 대체 입력: 누르고 있는 동안 세기가 살아 움직이되, 시간이 지나도 약해지지 않음
+  if (S.hold) {
     S.holdT = (S.holdT || 0) + dt;
-    const t = S.holdT, swell = .3 + .55 * (1 - Math.exp(-t * 1.5)) * Math.exp(-Math.max(t - 2.5, 0) * .22);
-    return clamp(swell * (1 + .28 * Math.sin(t * 4.3 + (S.holdP || 0)) + .2 * Math.sin(t * 9.7 + 2 * (S.holdP || 0))), .12, 1);
+    const t = S.holdT, p = S.holdP || 0;
+    const body = .62 + .2 * Math.sin(t * .83 + p) + .12 * Math.sin(t * 2.1 + 2 * p);
+    return clamp(Math.min(1, .35 + t * 2.2) * body * (1 + .16 * Math.sin(t * 5.3 + 3 * p)), .22, 1);
   }
   S.holdT = 0; S.holdP = Math.random() * 6.3;
+  // 마이크: 감지된 실제 숨 그대로. 멈추면 멈추고 다시 불면 바로 이어짐
   return mic?.gate.on ? mic.gate.strength : 0;
 }
 
@@ -168,7 +171,6 @@ function syncUi() {
   $('holdBtn').hidden = !(live && S.up && (S.micDenied || S.noMic));
   $('setBtn').hidden = !(live && S.up && !window.AGAPE_NO_MIC);
   if ($('setBtn').hidden) { $('settings').hidden = true; $('setBtn').setAttribute('aria-expanded', false); }
-  $('gardenBtn').hidden = !(live && garden?.total > 0);
 }
 
 async function toggleWand() {
@@ -203,33 +205,45 @@ $('micBtn').onclick = () => startMic(true);
 
 const hb = $('holdBtn');
 const hold = v => { S.hold = v; hb.classList.toggle('on', v); };
-hb.addEventListener('pointerdown', e => { e.preventDefault(); hb.setPointerCapture(e.pointerId); hold(true); });
-['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => hb.addEventListener(n, () => hold(false)));
+// 입력은 그 손가락·마우스가 실제로 떨어질 때만 끝남 (포인터 캡처가 풀려도 유지)
+let holdId = null;
+const holdEnd = e => { if (holdId !== null && (!e || e.pointerId === undefined || e.pointerId === holdId)) { holdId = null; hold(false); } };
+hb.addEventListener('pointerdown', e => { e.preventDefault(); holdId = e.pointerId; try { hb.setPointerCapture(e.pointerId); } catch {} hold(true); });
+addEventListener('pointerup', holdEnd); addEventListener('pointercancel', holdEnd);
+addEventListener('blur', () => holdEnd()); document.addEventListener('visibilitychange', () => { if (document.hidden) holdEnd(); });
 hb.addEventListener('contextmenu', e => e.preventDefault());
+hb.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+hb.addEventListener('selectstart', e => e.preventDefault());
 addEventListener('keydown', e => { if (e.code === 'Space' && !e.repeat && S.up && (S.micDenied || S.noMic) && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); hold(true); } });
 addEventListener('keyup', e => { if (e.code === 'Space') hold(false); });
 
 $('setBtn').onclick = () => { const s = $('settings'); s.hidden = !s.hidden; $('setBtn').setAttribute('aria-expanded', !s.hidden); };
 $('sens').oninput = e => { const v = +e.target.value; if (mic) mic.gate.sens = v / 100; try { localStorage.setItem('agape.sens', v); } catch {} };
 $('noMic').onclick = () => { S.noMic = true; mic?.stop(); $('settings').hidden = true; hint('아래 버튼을 길게 눌러 불어 보세요'); syncUi(); };
-$('gardenBtn').onclick = startEnding;
 $('againBtn').onclick = resetAll;
 
 // ─── 엔딩과 초기화 ─────────────────────────────────────
+// 목표 꽃 수가 채워지면: 입력을 닫고 → 마지막 꽃이 다 필 때까지 기다린 뒤 → 막대가 물러나고 카메라가 정원을 담음
+function beginFinish() {
+  S.phase = 'finishing'; S.finishT = 0; holdEnd(); hold(false); hint(''); $('settings').hidden = true; syncUi();
+  mic?.stop(); bubbles.releaseAll();
+}
 function startEnding() {
-  S.phase = 'ending'; S.up = false; S.endT = 0; hold(false); hint(''); syncUi();
-  bubbles.hideRing(); mic?.stop(); bubbles.wrapUp();
+  S.phase = 'ending'; S.up = false; S.endT = 0; holdEnd(); hold(false); hint(''); syncUi();
+  mic?.stop(); bubbles.releaseAll();
   view.endFrom = camera.position.clone();
 }
 function resetAll() {
   bubbles.clear(); garden.reset(); layoutGarden();
-  Object.assign(S, { phase: 'play', up: false, lift: 0, camT: 0, h: 0, peak: 0, blowT: 0, hold: false, sim: { on: false, strength: 0 }, noMic: !!window.AGAPE_NO_MIC, micDenied: false, blown: false, endT: 0 });
-  mic?.stop(); mic = null;
+  Object.assign(S, { phase: 'play', up: false, lift: 0, camT: 0, h: 0, peak: 0, blowT: 0, hold: false, sim: { on: false, strength: 0 }, noMic: !!window.AGAPE_NO_MIC, micDenied: false, blown: false, endT: 0, finishT: 0 });
+  holdEnd(); hold(false); mic?.stop(); mic = null;
   $('ending').classList.remove('on'); $('ending').hidden = true; $('micState').textContent = '';
   hint('막대를 눌러 들어 올리세요'); syncUi();
 }
 
 // ─── 프레임 ──────────────────────────────────────────
+const END_TEXT_AT = 10;                          // 카메라가 멈춘 뒤 정원을 감상하는 시간을 둔 다음 문구 등장
+const WAND_EXIT = new THREE.Vector3(11, -2.2, 3);
 const camAt = new THREE.Vector3(), haloTmp = new THREE.Vector3();
 function step(dt) {
   S.time += dt;
@@ -242,13 +256,13 @@ function step(dt) {
   // 카메라
   if (S.phase === 'ending') {
     S.endT += dt;
-    const t = ease(clamp(S.endT / 6, 0, 1)), g = view.garden;
+    const t = ease(clamp(S.endT / 7, 0, 1)), g = view.garden;
     const sway = Math.sin(S.endT * .16) * Math.min(1, S.endT / 8);
     const span = g.pos.z * .11;
     camera.position.set(lerp(view.endFrom.x, sway * span, t), lerp(view.endFrom.y, g.pos.y + g.pos.z * .02, t), lerp(view.endFrom.z, g.pos.z * 1.04, t));
     camAt.lerpVectors(g.at, new THREE.Vector3(0, g.at.y + g.pos.z * .015, -2), t);
     camera.lookAt(camAt);
-    if (S.endT > 6.2 && $('ending').hidden) { $('ending').hidden = false; requestAnimationFrame(() => $('ending').classList.add('on')); }
+    if (S.endT > END_TEXT_AT && $('ending').hidden) { $('ending').hidden = false; requestAnimationFrame(() => $('ending').classList.add('on')); }
   } else {
     const t = ease(S.camT);
     camera.position.lerpVectors(view.intro.pos, view.garden.pos, t);
@@ -259,6 +273,7 @@ function step(dt) {
   const e = ease(S.lift);
   wand.position.lerpVectors(POSE.rest.p, POSE.up.p, e);
   wand.position.y += Math.sin(e * Math.PI) * .22 + Math.sin(S.time * .9) * .035 * e;
+  if (S.phase === 'ending') wand.position.addScaledVector(WAND_EXIT, ease(clamp((S.endT - 1.2) / 3.4, 0, 1)));   // 내려간 뒤 화면 밖으로 물러남
   wand.quaternion.slerpQuaternions(POSE.rest.q, POSE.up.q, e);
   groundMat.uniforms.uFocus.value.copy(POSE.rest.p);
   groundMat.uniforms.uFocusA.value = 1 - e * .9 * (1);
@@ -266,8 +281,12 @@ function step(dt) {
 
   bubbles.update(dt, breath(dt), {
     active: S.phase === 'play' && S.up && S.lift > .96, lift: S.lift, camera, maxBubbles: quality.t.bubbles,
-    spawnSeed: p => garden.spawnSeed(p, quality.t.flowers), portraitK: view.bubbleK,
+    spawnSeed: p => garden.spawnSeed(p, Math.max(quality.t.flowers, garden.goal)), portraitK: view.bubbleK,
+    canSeed: popping => garden.committed + popping < garden.goal,
   });
+  if (S.phase === 'play' && garden.committed + bubbles.popping >= garden.goal) beginFinish();
+  if (S.phase === 'finishing' && garden.idle && !bubbles.popping) { S.finishT += dt; if (S.finishT > 1.1) startEnding(); }
+  if (S.phase === 'ending' && S.lift < .04) bubbles.hideRing();
   garden.update(dt);
   if (!S.blown && bubbles.stats.born) { S.blown = true; hint(''); }
 
@@ -275,7 +294,7 @@ function step(dt) {
   if (mic?.ready && !$('settings').hidden) {
     const g = mic.gate; $('level').style.width = clamp(g.level / 40, 0, 1) * 100 + '%'; $('gate').style.left = g.gateDb / 40 * 100 + '%';
   }
-  if (garden.total && $('gardenBtn').hidden) syncUi();
+  if (garden.total && !$('title').classList.contains('small')) syncUi();
 }
 
 let last = 0, frozen = false;
@@ -302,6 +321,7 @@ const load = u => {
   applyGlass(w.scene, createWandMaterial()); wand.add(w.scene);
   garden = new Garden(scene, P, createGlassMaterials());
   S.bubbles = bubbles;
+  if (params.has('goal')) garden.goal = Math.max(1, Math.round(+params.get('goal')));
   ready = true; buildPipeline(); fit(); updateUpPose();
   addEventListener('resize', () => { fit(); updateUpPose(); });
   S.phase = 'play'; camera.position.copy(view.intro.pos); camera.lookAt(view.intro.at);
@@ -314,7 +334,7 @@ const load = u => {
   renderer.setAnimationLoop(loop);
   if (DEBUG) {
     window.__agape = {
-      S, bubbles, CONFIG, garden, quality, THREE, wand, P, camera, scene, renderer, toggleWand, startEnding, resetAll,
+      S, bubbles, CONFIG, garden, quality, THREE, wand, P, camera, scene, renderer, toggleWand, startEnding, beginFinish, resetAll,
       breathe(s) { S.sim.on = s > 0; S.sim.strength = s; },
       step(sec, d = 1 / 30) { frozen = true; for (let t = 0; t < sec; t += d) step(d); },
       resume() { frozen = false; }, draw() { (composer ?? renderer).render(scene, camera); },

@@ -2,6 +2,9 @@
 import * as THREE from 'three';
 import { GLASS_KEYS, applyGlass } from './glass_materials.js';
 
+// 정원이 완성되는 유리꽃 수. 기기 성능과 무관합니다. (주소에 ?goal=30 으로도 조절)
+export const FLOWER_GOAL = 20;
+
 export const hill = z => .24 * Math.max(0, -z);
 const KEYS = 'ABCDE'.split('');
 const HALO = { aurora: [.62, .58, 1], pearl: [1, .78, .92], milky: [.82, .82, 1], glow: [1, .72, .42] };
@@ -80,7 +83,7 @@ class Pools {
 
 export class Garden {
   constructor(scene, protos, mats) {
-    this.scene = scene; this.protos = protos; this.mats = mats;
+    this.scene = scene; this.protos = protos; this.mats = mats; this.goal = FLOWER_GOAL;
     this.lights = new Lights(scene); this.pools = new Pools(scene, 700);
     this.group = new THREE.Group(); scene.add(this.group);
     this.reset();
@@ -90,7 +93,10 @@ export class Garden {
     this.group.clear(); this.pools.clear(); this.lights.clear(); this.slots = this.slots?.map(s => (s.taken = false, s)) ?? [];
     this.total = 0;
   }
-  get glow() { return Math.min(1, this.done.length / 40); }
+  get glow() { return Math.min(1, this.done.length / Math.min(this.goal, 40)); }
+  /** 피었거나 피는 중이거나 내려오는 중인 꽃: 목표 판단은 이 수로 함 */
+  get committed() { return this.done.length + this.growing.length + this.seeds.length; }
+  get idle() { return !this.seeds.length && !this.growing.length; }
   /** camera에서 실제로 보이는 곳만 슬롯으로 등록 */
   layout(camera, topNdc, block) {
     if (this.total) return;
