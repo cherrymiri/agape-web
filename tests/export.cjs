@@ -7,20 +7,24 @@ await pg.goto('http://localhost:8766/?debug&tier=0');await pg.waitForFunction('w
 await pg.evaluate(()=>{const A=__agape;A.renderer.setAnimationLoop(null);window.__shot=(W,H,bg)=>{A.scene.background=new A.THREE.Color(bg);A.renderer.setPixelRatio(1);A.renderer.setSize(W,H,false);A.renderer.render(A.scene,A.camera);return A.renderer.domElement.toDataURL('image/png')};
  const G=A.garden;window.__hideGarden=()=>{G.group.visible=false;G.pearls.mesh.visible=false;G.lights.pts.visible=false;G.drops.mesh.visible=false}});
 const save=(n,d)=>fs.writeFileSync(OUT+n,Buffer.from(d.split(',')[1],'base64'));
-// 1) 막대 + 비눗방울: 실제 웹의 숨→비눗방울 시뮬레이션을 그대로 돌려 한 순간을 정지
-for(const seed of []){
- const r=await pg.evaluate(seed=>{const A=__agape,T=A.THREE;A.resetAll();__hideGarden();A.CONFIG.driftRatio=1;A.toggleWand();A.step(3);
-  A.breathe(.75);A.step(1.5+seed*.25);A.breathe(.4);A.step(.5);A.breathe(.85);A.step(.7);A.breathe(0);A.step(.05);
-  const c=A.camera;c.updateMatrixWorld();const pts=[];const p=new T.Vector3();
-  A.wand.updateMatrixWorld(true);const box=new T.Box3().setFromObject(A.wand.children.find(o=>o.type!=='Mesh'||o.geometry.type!=='CapsuleGeometry')||A.wand);
-  for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z])pts.push(p.set(x,y,z).clone().project(c));
-  for(const o of A.bubbles.list){const q=o.m.getWorldPosition(new T.Vector3()).clone();for(const d of [[1,0],[-1,0],[0,1],[0,-1]])pts.push(q.clone().add(new T.Vector3(d[0]*o.r,d[1]*o.r,0)).project(c))}
-  const xs=pts.map(v=>(v.x+1)/2*1280),ys=pts.map(v=>(1-v.y)/2*720);
-  let x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);const m=.08*Math.max(x1-x0,y1-y0);x0-=m;x1+=m;y0-=m;y1+=m;
-  const k=4200/Math.max(x1-x0,y1-y0);c.setViewOffset(1280,720,x0,y0,x1-x0,y1-y0);c.updateProjectionMatrix();
-  return{W:Math.round((x1-x0)*k),H:Math.round((y1-y0)*k),n:A.bubbles.list.length}},seed);
- for(const [bg,t] of [[0x000000,'k'],[0xffffff,'w']])save(`wand${seed}_${t}.png`,await pg.evaluate(([W,H,bg])=>__shot(W,H,bg),[r.W,r.H,bg]));
- await pg.evaluate(()=>{__agape.camera.clearViewOffset();__agape.camera.updateProjectionMatrix()});console.log('wand',seed,r);
+// 1) 막대 + 비눗방울: 웹의 시뮬레이션을 여러 번 돌려 가장 고르게 퍼진 순간을 고름
+{const best=await pg.evaluate(()=>{const A=__agape,T=A.THREE;let top=null;
+ for(let seed=0;seed<40;seed++){A.resetAll();__hideGarden();A.CONFIG.driftRatio=1;A.toggleWand();A.step(3);
+  const plan=[];let t=0;while(t<3.2+Math.random()*1.5){const d=.2+Math.random()*.7,st=Math.random()<.2?0:.35+Math.random()*.6;plan.push([st,d]);t+=d}
+  for(const [st,d] of plan){A.breathe(st);A.step(d)}A.breathe(0);A.step(.05);
+  const c=A.camera,L=A.bubbles.list;if(L.length<10||L.length>20)continue;
+  const wp=new T.Vector3().setFromMatrixPosition(A.wand.matrixWorld).project(c);
+  const P=L.map(o=>{const q=o.m.getWorldPosition(new T.Vector3());const v=q.clone().project(c);const e=q.clone().add(new T.Vector3(o.r,0,0)).project(c);return{x:v.x,y:v.y,r:Math.abs(e.x-v.x)}});
+  const xs=P.map(p=>p.x),ys=P.map(p=>p.y),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+  // 점수: 3x3 칸이 얼마나 고르게 차는지 + 겹침이 적은지 + 막대에서 왼쪽으로 퍼지는지
+  const cells=new Set(P.map(p=>Math.min(2,Math.floor((p.x-x0)/(x1-x0+1e-6)*3))+','+Math.min(2,Math.floor((p.y-y0)/(y1-y0+1e-6)*3))));
+  let ov=0;for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++){const d=Math.hypot(P[i].x-P[j].x,(P[i].y-P[j].y)*.56);if(d<(P[i].r+P[j].r)*1.05)ov++}
+  const aspect=(x1-x0)/((y1-y0)*.56+1e-6),score=cells.size*2-ov*1.5-Math.abs(Math.log(aspect))*2+(wp.x>x1?2:0);
+  if(!top||score>top.score){top={score,seed,plan,n:L.length,cells:cells.size,ov}}}
+ window.__plan=top;return top});
+ console.log('best',JSON.stringify(best));
+ const r=await pg.evaluate(()=>{const A=__agape,T=A.THREE;A.resetAll();__hideGarden();A.CONFIG.driftRatio=1;A.toggleWand();A.step(3);
+  return 0});
 }
 // 2) 유리꽃 한 송이: 웹과 같은 GLB·재질, 다 핀 상태 (웹 정원처럼 살짝 돌린 각도)
 for(const mat of ['milky']){
