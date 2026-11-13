@@ -7,6 +7,10 @@ def matte(k,w,out,pad=.05):
     img=np.dstack([c,a*255]).astype(np.uint8)
     ys,xs=np.where(a>.004);y0,y1,x0,x1=ys.min(),ys.max(),xs.min(),xs.max();p=int(pad*max(y1-y0,x1-x0))
     H,W=a.shape;img=img[max(0,y0-p):min(H,y1+p),max(0,x0-p):min(W,x1+p)]
+    if len(sys.argv) > 4:                                  # 정해진 비율(가로:세로)로 투명 여백 맞춤
+        ra = float(sys.argv[4]); h, w = img.shape[:2]
+        W2, H2 = (w, round(w / ra)) if w / h > ra else (round(h * ra), h)
+        canvas = np.zeros((H2, W2, 4), np.uint8); oy, ox = (H2 - h) // 2, (W2 - w) // 2; canvas[oy:oy + h, ox:ox + w] = img; img = canvas
     Image.fromarray(img,'RGBA').save(out,dpi=(300,300));print(out,img.shape)
     for bg,n in [((255,255,255),'_on_white'),((0,0,0),'_on_black')]:
         im=Image.fromarray(img,'RGBA');B=Image.new('RGBA',im.size,bg+(255,));B.alpha_composite(im);B.convert('RGB').resize((im.size[0]//4,im.size[1]//4)).save(out.replace('.png',n+'.jpg'))
