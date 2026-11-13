@@ -12,7 +12,7 @@ export const CONFIG = {
   sizeMin: .06,        // 방울 반지름 범위 (꽃 머리 지름 ≈ 1)
   sizeMax: .72,
   maxBuds: 5,          // 고리에서 동시에 부풀 수 있는 방울 수
-  endBubbles: 14,      // 엔딩 화면에 머무는 방울 수 상한
+  endBubbles: 24,      // 엔딩 화면에 머무는 방울 수 상한
   density: .3,        // 전체 생성 밀도 배율
   seekDelay: [.15, 1.8],  // 태어난 뒤 꽃 쪽으로 기울기 시작하는 시간 범위(초)
 };
@@ -62,7 +62,7 @@ export class Bubbles {
   ambient(dt, camera) {
     this.ambT -= dt;
     if (this.ambT > 0 || this.list.length >= CONFIG.endBubbles) return;
-    this.ambT = Math.random() < .3 ? rnd(.1, .35) : rnd(.45, 1.5);          // 가끔 연달아, 대개는 띄엄띄엄
+    this.ambT = Math.random() < .3 ? rnd(.1, .3) : rnd(.3, 1.0);          // 가끔 연달아, 대개는 띄엄띄엄
     const high = Math.random() < .26, y = high ? rnd(.56, .92) : rnd(-.82, -.02), z = rnd(-.6, 2.2);
     const v3 = new THREE.Vector3(1, y, .5).unproject(camera).sub(camera.position).normalize();
     const p = camera.position.clone().addScaledVector(v3, (z - camera.position.z) / v3.z);
