@@ -63,7 +63,7 @@ export class Bubbles {
     this.ambT -= dt;
     if (this.ambT > 0 || this.list.length >= CONFIG.endBubbles) return;
     this.ambT = Math.random() < .3 ? rnd(.1, .3) : rnd(.3, 1.0);          // 가끔 연달아, 대개는 띄엄띄엄
-    const high = Math.random() < .26, y = high ? rnd(.56, .92) : rnd(-.82, -.02), z = rnd(-.6, 2.2);
+    const y = rnd(-.85, .92), high = y > .3, z = rnd(-.6, 2.2);
     const v3 = new THREE.Vector3(1, y, .5).unproject(camera).sub(camera.position).normalize();
     const p = camera.position.clone().addScaledVector(v3, (z - camera.position.z) / v3.z);
     const R = Math.min(.13 * logn(.6), .44) / this.W, a = R * .7;
@@ -73,9 +73,9 @@ export class Bubbles {
     p.x += rW + .2;
     this.list.push({
       m, u, r: rW, R, age: 0, close: 1, closeT: 1, pop: -1, st: 0, stV: 0, p, ambient: true, high, fate: 'fly',
-      v: new THREE.Vector3(-rnd(.3, 1), rnd(-.02, .16), rnd(-.04, .04)), drag: rnd(.08, .22), rise: rnd(.02, .1), gain: rnd(.2, .7),
+      v: new THREE.Vector3(-rnd(.15, .5), rnd(-.06, .1), rnd(-.04, .04)), drag: rnd(.08, .22), rise: rnd(.02, .1), gain: rnd(.2, .7),
       swayA: rnd(.03, .24), swayF: rnd(.3, 1.1), swayP: rnd(6.2832), drift: new THREE.Vector3(), driftS: rnd(.06, .22), driftK: rnd(.3, 1),
-      exit: new THREE.Vector3(-rnd(.05, .3), rnd(0, .05), 0),
+      exit: new THREE.Vector3(-rnd(.03, .14), rnd(-.02, .03), 0),
     });
   }
 
@@ -245,7 +245,7 @@ export class Bubbles {
         if (p.z > 3.6) v.z -= (p.z - 3.6) * 3 * dt;
       } else {                                                 // 날아가는 방울은 점점 바람을 타고 화면 밖으로
         const ramp = clamp((b.age - .4) / 2.2, 0, 1);
-        if (b.ambient) {                                       // 엔딩 문구 앞은 비켜 감
+        if (b.ambient && Math.abs(nx) < .55) {                                       // 엔딩 문구 앞은 비켜 감
           const m = (b.r + .1) / hh;
           if (b.high && ny - m < .62) v.y += (.62 - ny + m) * 3 * dt;
           if (!b.high && ny + m > -.2) v.y -= (ny + m + .2) * 3 * dt;
