@@ -8,3 +8,4 @@ tests/*.log
 .vercel
 single
 shots
+export
