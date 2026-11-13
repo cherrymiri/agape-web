@@ -15,8 +15,8 @@ await pg.evaluate(([v,w])=>{window.__FROM=v;window.__TO=w;window.__SEEDS=[1,2,3,
 // 1차: 엔딩 비눗방울이 화면에 고르게 떠 있는 순간 찾기 (연출은 그대로, 시점만 고름)
 const pick=await pg.evaluate(()=>{const A=__agape,T=A.THREE,c=A.camera;let best=null;for(const seed of (window.__SEEDS||[7])){__run(seed);let f=0;
  while(A.S.endT<+(window.__TO||90)){A.step(1/30);if(++f%3||A.S.endT<window.__FROM)continue;c.updateMatrixWorld();
-  let n=0,big=0,edge=0;for(const b of A.bubbles.list){const v=b.m.getWorldPosition(new T.Vector3()).project(c);if(Math.abs(v.x)<.88&&Math.abs(v.y)<.9){n++;if(b.r>.1)big++;if(Math.abs(v.x)<.42&&v.y>.05&&v.y<.62)edge+=4}else if(Math.abs(v.x)<1.15)edge++}
-  const sc=n+Math.min(big,4)*.5-edge*.3;if(!best||sc>best.sc)best={sc:+sc.toFixed(1),t:A.S.endT,n,big,seed}}}
+  let n=0,big=0,edge=0,lf=0;for(const b of A.bubbles.list){const v=b.m.getWorldPosition(new T.Vector3()).project(c);if(Math.abs(v.x)<.88&&Math.abs(v.y)<.9){n++;if(v.x<-.2)lf++;if(b.r>.1)big++;if(Math.abs(v.x)<.42&&v.y>.05&&v.y<.62)edge+=4}else if(Math.abs(v.x)<1.15)edge++}
+  const sc=n+Math.min(big,4)*.5-edge*.3+Math.min(lf,4)*.6;if(!best||sc>best.sc)best={sc:+sc.toFixed(1),t:A.S.endT,n,big,lf,seed}}}
  return best});
 console.log('pick',JSON.stringify(pick));
 const chk=await pg.evaluate(p=>{const A=__agape,T=A.THREE;__run(p.seed);while(A.S.endT<p.t-1e-6)A.step(1/30);A.camera.updateMatrixWorld();let n=0;for(const b of A.bubbles.list){const v=b.m.getWorldPosition(new T.Vector3()).project(A.camera);if(Math.abs(v.x)<.88&&Math.abs(v.y)<.9)n++}return n},pick);console.log('replay visible',chk);

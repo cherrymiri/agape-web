@@ -63,19 +63,19 @@ export class Bubbles {
     this.ambT -= dt;
     if (this.ambT > 0 || this.list.length >= CONFIG.endBubbles) return;
     this.ambT = Math.random() < .3 ? rnd(.1, .3) : rnd(.3, 1.0);          // 가끔 연달아, 대개는 띄엄띄엄
-    const y = rnd(-.85, .92), high = y > .3, z = rnd(-.6, 2.2);
-    const v3 = new THREE.Vector3(1, y, .5).unproject(camera).sub(camera.position).normalize();
+    const L = Math.random() < .4 ? -1 : 1, y = rnd(-.85, .92), high = y > .3, z = rnd(-.6, 2.2);
+    const v3 = new THREE.Vector3(L, y, .5).unproject(camera).sub(camera.position).normalize();
     const p = camera.position.clone().addScaledVector(v3, (z - camera.position.z) / v3.z);
     const R = Math.min(.13 * logn(.6), .44) / this.W, a = R * .7;
     const m = createFilm(a), u = m.material.uniforms, h = R + Math.sqrt(R * R - a * a);
     u.uForm.value = 1; u.uH.value = h; u.uClose.value = 1;
     const rW = R * this.W; m.scale.setScalar(this.W); this.scene.add(m);
-    p.x += rW + .2;
+    p.x += L * (rW + .2);
     this.list.push({
       m, u, r: rW, R, age: 0, close: 1, closeT: 1, pop: -1, st: 0, stV: 0, p, ambient: true, high, fate: 'fly',
-      v: new THREE.Vector3(-rnd(.15, .5), rnd(-.06, .1), rnd(-.04, .04)), drag: rnd(.08, .22), rise: rnd(.02, .1), gain: rnd(.2, .7),
+      v: new THREE.Vector3(-L * rnd(.15, .5), rnd(-.06, .1), rnd(-.04, .04)), drag: rnd(.08, .22), rise: rnd(.02, .1), gain: rnd(.2, .7),
       swayA: rnd(.03, .24), swayF: rnd(.3, 1.1), swayP: rnd(6.2832), drift: new THREE.Vector3(), driftS: rnd(.06, .22), driftK: rnd(.3, 1),
-      exit: new THREE.Vector3(-rnd(.03, .14), rnd(-.02, .03), 0),
+      exit: new THREE.Vector3(-L * rnd(.03, .14), rnd(-.02, .03), 0),
     });
   }
 
