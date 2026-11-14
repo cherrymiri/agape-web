@@ -25,6 +25,10 @@ button:focus-visible{outline:2px solid var(--milk);outline-offset:3px}
 #holdBtn{touch-action:none;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
 #holdBtn.on{background:#efe8ff2e;border-color:var(--milk)}
 #setBtn{position:fixed;right:max(20px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 28px);width:42px;height:42px;padding:0;display:grid;place-items:center}
+#setBtn{position:fixed}#micLvl{position:absolute;inset:-1px;border-radius:50%;border:1.5px solid #d9ccff;opacity:0;pointer-events:none;transition:opacity .25s}
+#setBtn.live #micLvl{opacity:calc(.18 + var(--lv,0) * .6)}
+#setBtn.blow #micLvl{opacity:1;box-shadow:0 0 calc(4px + var(--lv,0) * 14px) #d9ccffaa}
+#noMic[hidden]{display:none}
 #setBtn[hidden],#settings[hidden],#ending[hidden]{display:none}
 #settings{position:fixed;right:max(20px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 82px);width:min(280px,calc(100vw - 40px));background:#120f1ce6;border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:10px;font-size:14px}
 #settings input{width:100%;accent-color:#d9ccff;margin:0}

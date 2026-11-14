@@ -27,13 +27,23 @@ scene.environment = createGlassEnvironment(renderer);
 const camera = new THREE.PerspectiveCamera(30, 1, .1, 120);
 
 let composer = null, bloom = null, tierNow = TIERS[1];
-function pixelRatio() { return Math.min(devicePixelRatio || 1, tierNow.pixel); }
+function pixelRatio() {
+  let r = Math.min(devicePixelRatio || 1, tierNow.pixel);
+  if (tierNow.budget) r = Math.max(1, Math.min(r, Math.sqrt(tierNow.budget / Math.max(1, innerWidth * innerHeight))));
+  return r;
+}
+// 렌더 타깃 안티앨리어싱은 WebGL2 + 부동소수 렌더 타깃 지원 기기에서만 (아니면 0으로 안전하게)
+function msaa(n) {
+  const c = renderer.capabilities, x = renderer.extensions;
+  if (!n || !c.isWebGL2 || !(x.has('EXT_color_buffer_float') || x.has('EXT_color_buffer_half_float'))) return 0;
+  return Math.min(n, c.maxSamples || 4);
+}
 function buildPipeline() {
   renderer.setPixelRatio(pixelRatio());
   composer?.dispose?.(); composer = null;
   if (tierNow.bloom) {
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: tierNow.samples });
+    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: msaa(tierNow.samples) });
     composer = new EffectComposer(renderer, rt);
     composer.addPass(new RenderPass(scene, camera));
     // 화면 절반 해상도로 빛번짐 계산
@@ -161,6 +171,8 @@ function syncUi() {
   $('micBtn').hidden = !(live && S.up && !micOn && !S.micDenied && !S.noMic);
   $('holdBtn').hidden = !(live && S.up && (S.micDenied || S.noMic));
   $('setBtn').hidden = !(live && S.up && !window.AGAPE_NO_MIC);
+  $('noMic').textContent = micOn ? '마이크 없이 하기' : '마이크 다시 켜기';
+  $('noMic').hidden = !micOn && !S.noMic && !S.micDenied;
   if ($('setBtn').hidden) { $('settings').hidden = true; $('setBtn').setAttribute('aria-expanded', false); }
 }
 
@@ -200,7 +212,12 @@ const hold = v => { S.hold = v; hb.classList.toggle('on', v); };
 let holdId = null;
 const holdEnd = e => { if (holdId !== null && (!e || e.pointerId === undefined || e.pointerId === holdId)) { holdId = null; hold(false); } };
 hb.addEventListener('pointerdown', e => { e.preventDefault(); holdId = e.pointerId; try { hb.setPointerCapture(e.pointerId); } catch {} hold(true); });
-addEventListener('pointerup', holdEnd); addEventListener('pointercancel', holdEnd);
+let touching = 0;
+addEventListener('pointerup', holdEnd);
+addEventListener('pointercancel', e => { if (e.pointerType === 'touch' && touching) return; holdEnd(e); });   // 손가락이 닿아 있는 동안은 유지
+addEventListener('touchstart', e => { touching = e.touches.length; }, true);
+addEventListener('touchend', e => { touching = e.touches.length; if (!touching) holdEnd(); }, true);
+addEventListener('touchcancel', e => { touching = e.touches.length; if (!touching) holdEnd(); }, true);
 addEventListener('blur', () => holdEnd()); document.addEventListener('visibilitychange', () => { if (document.hidden) holdEnd(); });
 hb.addEventListener('contextmenu', e => e.preventDefault());
 hb.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
@@ -210,7 +227,21 @@ addEventListener('keyup', e => { if (e.code === 'Space') hold(false); });
 
 $('setBtn').onclick = () => { const s = $('settings'); s.hidden = !s.hidden; $('setBtn').setAttribute('aria-expanded', !s.hidden); };
 $('sens').oninput = e => { const v = +e.target.value; if (mic) mic.gate.sens = v / 100; try { localStorage.setItem('agape.sens', v); } catch {} };
-$('noMic').onclick = () => { S.noMic = true; mic?.stop(); $('settings').hidden = true; hint('아래 버튼을 길게 눌러 불어 보세요'); syncUi(); };
+$('noMic').onclick = () => {
+  if (mic?.ready) { S.noMic = true; mic.stop(); $('settings').hidden = true; hint('아래 버튼을 길게 눌러 불어 보세요'); syncUi(); return; }
+  S.noMic = false; S.micDenied = false; holdEnd(); hold(false); startMic(true);       // 새로고침 없이 다시 켜기
+};
+// iOS: 화면을 만질 때마다 멈춘 오디오를 깨움 (잠금·탭 전환·전화 뒤 복구)
+addEventListener('pointerdown', () => mic?.wake(), true);
+addEventListener('touchend', () => mic?.wake(), true);
+function recoverMic() {
+  if (document.hidden || !mic?.ready || S.phase !== 'play') return;
+  if (mic.lost) { mic.stop(); startMic(); return; }                // 끊긴 마이크는 다시 연결
+  mic.wake();
+  setTimeout(() => { if (mic?.ready && !mic.running && S.up) hint('화면을 한 번 눌러 마이크를 다시 깨워 주세요'); }, 800);
+}
+document.addEventListener('visibilitychange', recoverMic);
+addEventListener('pageshow', recoverMic);
 $('againBtn').onclick = resetAll;
 
 // ─── 엔딩과 초기화 ─────────────────────────────────────
@@ -282,6 +313,10 @@ function step(dt) {
   if (S.phase === 'ending' && S.endT > 2.2) bubbles.ambient(dt, camera);   // 사랑은 계속됨
   if (!S.blown && bubbles.stats.born) { S.blown = true; hint(''); }
 
+  // 마이크 입력 표시 (설정 버튼 테두리가 소리에 맞춰 밝아짐)
+  const sb = $('setBtn'), live = !!mic?.running;
+  sb.classList.toggle('live', live); sb.classList.toggle('blow', live && mic.gate.on);
+  if (live) sb.style.setProperty('--lv', clamp(mic.gate.level / 30, 0, 1).toFixed(2));
   // 설정의 입력 수준 표시
   if (mic?.ready && !$('settings').hidden) {
     const g = mic.gate; $('level').style.width = clamp(g.level / 40, 0, 1) * 100 + '%'; $('gate').style.left = g.gateDb / 40 * 100 + '%';

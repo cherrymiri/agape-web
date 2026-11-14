@@ -68,30 +68,47 @@ export class BreathMic {
   static async alreadyGranted() {
     try { return (await navigator.permissions.query({ name: 'microphone' })).state === 'granted'; } catch { return false; }
   }
+  // iOS Safari: 오디오 컨텍스트는 터치 이벤트 안에서(첫 await 전에) 만들고 깨워야 함.
+  // 그래서 권한 요청보다 먼저 만들고, 깨우기 결과는 나중에 기다림.
   async start() {
     if (this.ready) return;
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 }, video: false });
     const C = window.AudioContext || window.webkitAudioContext;
-    this.ctx = new C();
-    if (this.ctx.state === 'suspended') await this.ctx.resume();
+    if (!this.ctx || this.ctx.state === 'closed') this.ctx = new C();
+    const woke = this.ctx.resume?.().catch(() => {});
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 }, video: false });
+    } catch (e) {
+      if (e?.name !== 'OverconstrainedError' && e?.name !== 'TypeError') { this.ctx.close?.()?.catch?.(() => {}); this.ctx = null; throw e; }
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });   // 세부 조건을 못 맞추는 기기
+    }
+    await Promise.race([woke, new Promise(r => setTimeout(r, 1200))]);
     this.an = this.ctx.createAnalyser();
     this.an.fftSize = 2048; this.an.smoothingTimeConstant = 0;
-    this.ctx.createMediaStreamSource(this.stream).connect(this.an);   // 스피커로 연결하지 않음
+    this.src = this.ctx.createMediaStreamSource(this.stream);
+    this.src.connect(this.an);
+    // Safari는 출력까지 이어지지 않은 노드를 처리하지 않을 수 있어 음량 0으로 출력에 연결 (소리는 나지 않음)
+    this.mute = this.ctx.createGain(); this.mute.gain.value = 0;
+    this.an.connect(this.mute).connect(this.ctx.destination);
     this.t = new Float32Array(this.an.fftSize);
     this.f = new Float32Array(this.an.frequencyBinCount);
     this.gate.reset();
     this.ready = true;
   }
+  /** 화면 잠금·탭 전환·전화 등으로 멈춘 오디오를 다시 깨움. 터치 이벤트 안에서 부르면 iOS에서도 확실히 깨어남 */
+  wake() { if (this.ctx && this.ctx.state !== 'running' && this.ctx.state !== 'closed') this.ctx.resume().catch(() => {}); }
+  /** 마이크 트랙이 끊겼는지 (iOS는 백그라운드로 가면 트랙을 끊기도 함) */
+  get lost() { return this.ready && this.stream?.getAudioTracks().every(t => t.readyState === 'ended'); }
+  get running() { return this.ready && this.ctx?.state === 'running'; }
   update(dt) {
-    if (!this.ready) return;
+    if (!this.ready || this.ctx.state !== 'running') { this.gate.on = false; this.gate.strength = 0; this.gate.level = 0; return; }
     this.an.getFloatTimeDomainData(this.t);
     this.an.getFloatFrequencyData(this.f);
     this.gate.push(analyzeFrame(this.t, this.f, this.ctx.sampleRate, this.an.fftSize), Math.min(dt, .1));
   }
   stop() {
     this.stream?.getTracks().forEach(t => t.stop());
-    this.ctx?.close();
-    this.stream = this.ctx = null; this.ready = false; this.gate.reset();
+    this.ctx?.close?.()?.catch?.(() => {});
+    this.stream = this.ctx = this.an = this.src = this.mute = null; this.ready = false; this.gate.reset();
   }
 }
