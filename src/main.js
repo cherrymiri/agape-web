@@ -177,7 +177,7 @@ function syncUi() {
 }
 
 async function toggleWand() {
-  if (S.phase !== 'play') return;
+  if (S.phase !== 'play' || S.opening) return;
   S.up = !S.up;
   if (S.up) {
     bubbles.showRing();
@@ -243,6 +243,28 @@ function recoverMic() {
 document.addEventListener('visibilitychange', recoverMic);
 addEventListener('pageshow', recoverMic);
 $('againBtn').onclick = resetAll;
+
+// ─── 오프닝과 전체화면 ─────────────────────────────────
+// 오프닝이 떠 있는 동안 뒤에서 정원이 미리 준비되고, '체험 시작하기'를 누르면 전체화면으로 들어가며 부드럽게 사라짐
+S.opening = !DEBUG && !params.has('noopening');
+if (!S.opening) $('opening').hidden = true;
+const fsOk = () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+const fsOn = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+function enterFs() {
+  const el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
+  try { const r = req?.call(el, { navigationUI: 'hide' }); r?.catch?.(() => {}); } catch {}
+}
+function syncFs() { $('fsBtn').hidden = S.opening || !fsOk() || fsOn(); }
+document.addEventListener('fullscreenchange', syncFs); document.addEventListener('webkitfullscreenchange', syncFs);
+$('fsBtn').onclick = enterFs;
+$('startBtn').onclick = () => {
+  if (!S.opening || !ready) return;
+  enterFs();                                       // 버튼 클릭 안에서 바로 요청해야 브라우저가 허용함
+  S.opening = false;
+  const o = $('opening'); o.classList.add('closing'); o.setAttribute('aria-hidden', 'true');
+  setTimeout(() => { o.hidden = true; syncFs(); }, 1100);
+  setTimeout(() => { if (S.phase === 'play' && !S.up) hint('막대를 눌러 들어 올리세요'); }, 700);
+};
 
 // ─── 엔딩과 초기화 ─────────────────────────────────────
 // 20번째 꽃이 완전히 피는 순간 시작. 막대 퇴장·카메라·마지막 방울이 동시에 진행됨
@@ -351,7 +373,9 @@ const load = u => {
   ready = true; buildPipeline(); fit(); updateUpPose();
   addEventListener('resize', () => { fit(); updateUpPose(); });
   S.phase = 'play'; layoutGarden();
-  hint('막대를 눌러 들어 올리세요'); syncUi();
+  $('startBtn').disabled = false;
+  if (!S.opening) hint('막대를 눌러 들어 올리세요');
+  syncUi();
 
   // 셰이더를 미리 컴파일해 첫 꽃이 필 때 멈칫하지 않게 함
   renderer.compile(scene, camera);
