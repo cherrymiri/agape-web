@@ -1,6 +1,7 @@
 // 정원: 슬롯 배치, 꽃 생성(Bloom), 개화 후 인스턴싱, 씨앗과 빛.
 import * as THREE from 'three';
 import { GLASS_KEYS, applyGlass } from './glass_materials.js';
+import { sfx } from './sound.js';
 
 // 정원 설정
 export const GARDEN = {
@@ -244,7 +245,7 @@ export class Garden {
 
     const P = this.pearls; c = 0;
     for (const f of this.flowers) {
-      if (f.opening && f.wet > 0 || f.bt > 0) { f.bt += dt; f.g = Math.min(f.bt / f.bloom, 1); }
+      if (f.opening && f.wet > 0 || f.bt > 0) { f.bt += dt; f.g = Math.min(f.bt / f.bloom, 1); if (f.g >= 1 && !f.sang) { f.sang = true; sfx.bloom(); } }
       f.wet = Math.max(0, f.wet - dt / 1.5);
       this.apply(f);
       // 진주: 살짝 숨 쉬다가, 물을 받으면 부풀었다 꽃 중심으로 스며듦

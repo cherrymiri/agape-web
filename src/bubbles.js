@@ -6,6 +6,7 @@
 // 결말: 방울마다 태어날 때 '꽃에게 닿음/멀리 떠남'이 정해집니다. 떠나는 방울은 터지지 않고 아무것도 남기지 않습니다.
 import * as THREE from 'three';
 import { createFilm } from './film.js';
+import { sfx } from './sound.js';
 
 export const CONFIG = {
   driftRatio: .3,      // 꽃에 닿지 않고 터지지도 않은 채 멀리 떠나는 비율 (주소 ?drift=0.25)
@@ -263,7 +264,7 @@ export class Bubbles {
       }
       if (b.pop < 0 && b.close >= 1 && b.age > .5) {
         const f = garden.touching(p, b.r, b.target);
-        if (f) { b.pop = 0; garden.burst(p, b.r, f); this.stats.hits++; }   // 닿는 순간 비눗막이 물방울이 됨
+        if (f) { b.pop = 0; garden.burst(p, b.r, f); this.stats.hits++; sfx.pop(b.r); }   // 닿는 순간 비눗막이 물방울이 됨
       }
       if (b.pop >= 0) {
         b.pop += dt / (.2 + .26 * Math.min(b.r, 1)); u.uPop.value = Math.min(b.pop, 1);
