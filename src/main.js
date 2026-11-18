@@ -9,6 +9,7 @@ import { BreathMic } from './breath.js';
 import { Bubbles, CONFIG } from './bubbles.js';
 import { Quality, TIERS } from './quality.js';
 import { Garden } from './garden.js';
+import { sfx } from './sound.js';
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -271,6 +272,7 @@ $('startBtn').onclick = () => {
 function startEnding() {
   $('note').classList.remove('on');
   S.phase = 'ending'; S.endT = 0; S.exitT = 0; hint(''); syncUi();
+  sfx.ending();
   view.endFrom = camera.position.clone(); view.endAtFrom = camAt.clone();
   view.exitX = 4 + (camera.position.z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
   solveEnd(); bubbles.settle();

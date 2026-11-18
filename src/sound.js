@@ -2,10 +2,11 @@
 //   pop_e  "Pop 01" (Cartoon_Pop_02) by LilMati    freesound.org/s/506546  CC0
 //   pop_f  "Mouth Plops.wav" by CapsLok            freesound.org/s/181907  CC0
 //   bloom  "Windchime soft" by Vendarro            freesound.org/s/399538  CC0
+//   ending 직접 만든 소리(풍경 녹음 위에 오르골·작은 종을 합성해 얹음) — 저작권 표시 필요 없음
 // 소리는 첫 클릭·터치 때 켜집니다(PC·모바일 동일). 모두 짧고 음정이 있어 숨 감지(지속되는 잡음)에 잡히지 않습니다.
-const LEVEL = { pop_e: 0.55, pop_f: 0.55, bloom: 0.6 };
+const LEVEL = { pop_e: 0.55, pop_f: 0.55, bloom: 0.6, ending: 0.6 };
 const POPS = ['pop_e', 'pop_f'];
-let ctx = null, out = null, voices = 0, lastPop = '';
+let ctx = null, out = null, voices = 0, lastPop = '', lastBloom = null;
 const bufs = {}, last = {};
 
 function decode(data) {
@@ -29,12 +30,13 @@ function unlock() {
 for (const e of ['pointerdown', 'touchend', 'click', 'keydown']) window.addEventListener(e, unlock, { capture: true, passive: true });
 
 function play(name, { gain = 1, rate = 1, kind = name, gap = 0 } = {}) {
-  if (!ctx || ctx.state !== 'running' || !bufs[name] || voices >= 6) return;
-  if (gap && ctx.currentTime - (last[kind] ?? -9) < gap) return;
+  if (!ctx || ctx.state !== 'running' || !bufs[name] || voices >= 6) return null;
+  if (gap && ctx.currentTime - (last[kind] ?? -9) < gap) return null;
   last[kind] = ctx.currentTime;
   const s = ctx.createBufferSource(); s.buffer = bufs[name]; s.playbackRate.value = rate;
   const g = ctx.createGain(); g.gain.value = gain * LEVEL[name];
   s.connect(g).connect(out); voices++; s.onended = () => { voices--; }; s.start();
+  return g;
 }
 
 export const sfx = {
@@ -47,5 +49,11 @@ export const sfx = {
     play(n, { kind: 'pop', gap: 0.06, gain: 0.75 + 0.25 * Math.random(), rate: (1.12 - 0.22 * k) * (0.96 + Math.random() * 0.08) });   // 큰 방울은 조금 낮게
   },
   // 유리꽃이 다 피었을 때: 작은 풍경
-  bloom() { play('bloom', { kind: 'bloom', gap: 0.5, rate: 0.97 + Math.random() * 0.06 }); },
+  // 엔딩: 풍경으로 시작해 오르골이 올라가고, 작은 종이 내려앉은 뒤 풍경만 남음
+  ending() {
+    // 마지막 꽃의 풍경과 엔딩 첫 풍경이 겹치지 않게, 방금 울린 꽃 소리는 살짝 줄여 둠
+    if (lastBloom && ctx) lastBloom.gain.setTargetAtTime(0, ctx.currentTime, 0.08);
+    play('ending', { kind: 'ending', gap: 3 });
+  },
+  bloom() { lastBloom = play('bloom', { kind: 'bloom', gap: 0.5, rate: 0.97 + Math.random() * 0.06 }); },
 };
