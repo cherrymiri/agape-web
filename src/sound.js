@@ -1,12 +1,10 @@
-// AGAPE 효과음. Freesound의 실제 녹음을 다듬어 씁니다 (라이선스는 각 페이지에서 확인):
-//   pop_a  "BUBBLE POP .wav" by Ch0cchi            freesound.org/s/15348   CC BY 3.0 (표기 필요)
-//   pop_d  "Bubble Pops" by Abacagi                freesound.org/s/497198  CC BY 4.0 (표기 필요)
+// AGAPE 효과음. Freesound의 실제 녹음(모두 CC0, 표기 의무 없음)을 다듬어 씁니다:
 //   pop_e  "Pop 01" (Cartoon_Pop_02) by LilMati    freesound.org/s/506546  CC0
 //   pop_f  "Mouth Plops.wav" by CapsLok            freesound.org/s/181907  CC0
 //   bloom  "Windchime soft" by Vendarro            freesound.org/s/399538  CC0
 // 소리는 첫 클릭·터치 때 켜집니다(PC·모바일 동일). 모두 짧고 음정이 있어 숨 감지(지속되는 잡음)에 잡히지 않습니다.
-const LEVEL = { pop_a: 0.55, pop_d: 0.55, pop_e: 0.55, pop_f: 0.55, bloom: 0.6 };
-const POPS = ['pop_a', 'pop_d', 'pop_e', 'pop_f'];
+const LEVEL = { pop_e: 0.55, pop_f: 0.55, bloom: 0.6 };
+const POPS = ['pop_e', 'pop_f'];
 let ctx = null, out = null, voices = 0, lastPop = '';
 const bufs = {}, last = {};
 
@@ -40,7 +38,7 @@ function play(name, { gain = 1, rate = 1, kind = name, gap = 0 } = {}) {
 }
 
 export const sfx = {
-  // 비눗방울이 꽃에 닿아 터질 때: 네 가지 '뽁'이 섞여서, 같은 소리가 연달아 나오지 않게
+  // 비눗방울이 꽃에 닿아 터질 때: 두 가지 '뽁'이 섞여서, 같은 소리가 연달아 나오지 않게
   pop(size = 0.5) {
     let n = POPS[Math.floor(Math.random() * POPS.length)];
     if (n === lastPop) n = POPS[(POPS.indexOf(n) + 1) % POPS.length];
