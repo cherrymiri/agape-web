@@ -4,6 +4,7 @@
 //   bloom  "Windchime soft" by Vendarro            freesound.org/s/399538  CC0
 //   ending 직접 만든 소리(풍경 녹음 위에 오르골·작은 종을 합성해 얹음) — 저작권 표시 필요 없음
 // 소리는 첫 클릭·터치 때 켜집니다(PC·모바일 동일). 모두 짧고 음정이 있어 숨 감지(지속되는 잡음)에 잡히지 않습니다.
+import { speakerOut } from './iosAudio.js';
 const LEVEL = { pop_e: 0.55, pop_f: 0.55, bloom: 0.6, ending: 0.6 };
 const POPS = ['pop_e', 'pop_f'];
 let ctx = null, out = null, voices = 0, lastPop = '', lastBloom = null;
@@ -18,7 +19,7 @@ function setup() {
   if (!AC) return;
   ctx = new AC();
   const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -12;
-  out = ctx.createGain(); out.gain.value = 0.8; out.connect(comp).connect(ctx.destination);
+  out = ctx.createGain(); out.gain.value = 0.8; out.connect(comp).connect(speakerOut(ctx));
   const base = import.meta.env.BASE_URL || '/';
   for (const n of Object.keys(LEVEL)) fetch(`${base}sfx/${n}.mp3`).then(r => r.arrayBuffer()).then(decode).then(b => { bufs[n] = b; }).catch(() => {});
 }
