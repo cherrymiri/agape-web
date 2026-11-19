@@ -296,7 +296,9 @@ function step(dt) {
   S.time += dt;
   mic?.update(dt);
   // 체험 도중 마이크 입력이 끊기면(이어폰 연결 변화, 효과음 재생 중 기기 오디오 재설정 등) 스스로 다시 연결
-  if (mic?.stuck && !S.micBusy && performance.now() - micRetryAt > 4000) {
+  // 마이크는 엔딩음(약 8.3초)이 끝난 뒤에 끔: 줄이어폰은 소리와 마이크가 한 선이라, 재생 중에 끄면 기기가 오디오를 다시 잡으며 소리가 끊김
+  if (S.phase === 'ending' && S.endT > 10 && mic?.ready) mic.stop();
+  if (S.phase === 'play' && mic?.stuck && !S.micBusy && performance.now() - micRetryAt > 4000) {
     micRetryAt = performance.now(); console.warn('mic stuck → reconnect'); mic.stop(); startMic();
   }
   S.lift += ((S.up ? 1 : 0) - S.lift) * Math.min(1, dt * 3.1);
@@ -322,7 +324,7 @@ function step(dt) {
   if (S.phase === 'ending') {                      // 오른쪽으로 부드럽게 퇴장
     const wasOut = S.exitT >= 1; S.exitT = Math.min(1, S.exitT + dt / WAND_EXIT_TIME);
     const x = ease(S.exitT); wand.position.x += view.exitX * x * x; wand.position.y += .5 * x;
-    if (S.exitT >= 1 && !wasOut) { holdEnd(); hold(false); mic?.stop(); }   // 막대가 사라진 순간 입력 종료
+    if (S.exitT >= 1 && !wasOut) { holdEnd(); hold(false); }   // 막대가 사라지면 불기 입력은 더 이상 쓰이지 않음
   }
   wand.quaternion.slerpQuaternions(POSE.rest.q, POSE.up.q, e);
 
