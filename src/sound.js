@@ -4,7 +4,7 @@
 //   bloom  "Windchime soft" by Vendarro            freesound.org/s/399538  CC0
 //   ending 직접 만든 소리(풍경 녹음 위에 오르골·작은 종을 합성해 얹음) — 저작권 표시 필요 없음
 // 소리는 첫 클릭·터치 때 켜집니다(PC·모바일 동일). 모두 짧고 음정이 있어 숨 감지(지속되는 잡음)에 잡히지 않습니다.
-import { speakerOut } from './iosAudio.js';
+import { speakerOut, holdSpeakers, releaseSpeakers } from './iosAudio.js';
 const LEVEL = { pop_e: 0.55, pop_f: 0.55, bloom: 0.6, ending: 0.6 };
 const POPS = ['pop_e', 'pop_f'];
 let ctx = null, out = null, voices = 0, lastPop = '', lastBloom = null;
@@ -41,6 +41,9 @@ function play(name, { gain = 1, rate = 1, kind = name, gap = 0 } = {}) {
 }
 
 export const sfx = {
+  // 마이크를 켜는 동안 소리 출력을 잠깐 멈춤 (아이폰은 재생 중이면 마이크 장치를 못 여는 경우가 있음)
+  async hold() { holdSpeakers(); if (ctx && ctx.state === 'running') await ctx.suspend().catch(() => {}); },
+  release() { releaseSpeakers(); if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); },
   // 비눗방울이 꽃에 닿아 터질 때: 두 가지 '뽁'이 섞여서, 같은 소리가 연달아 나오지 않게
   pop(size = 0.5) {
     let n = POPS[Math.floor(Math.random() * POPS.length)];

@@ -161,11 +161,20 @@ async function startMic(fromClick) {
   if (!BreathMic.supported()) return micFail();
   mic ||= new BreathMic(+$('sens').value / 100);
   S.micBusy = true; $('micBtn').hidden = true; if (fromClick) hint('');
+  await sfx.hold();
   try { await mic.start(); S.micDenied = false; if (S.up && !S.blown && !S.flowersSeen) hint('마이크에 ‘후—’ 하고 불어 보세요'); $('micState').textContent = '마이크 켜짐. 소리는 이 기기 안에서만 처리되고 저장되지 않습니다.'; }
-  catch (e) { console.warn(e); micFail(); }
-  S.micBusy = false; syncUi();
+  catch (e) { console.warn(e); micFail(e); }
+  sfx.release(); S.micBusy = false; syncUi();
 }
-function micFail() { S.micDenied = true; hint('아래 버튼을 길게 누르면 숨 대신 불 수 있어요'); $('micState').textContent = '마이크를 사용할 수 없습니다. 브라우저 권한을 허용하거나 버튼으로 불어 주세요.'; syncUi(); }
+function micFail(e) {
+  S.micDenied = true; hint('아래 버튼을 길게 누르면 숨 대신 불 수 있어요');
+  const n = e?.name || '';
+  $('micState').textContent =
+    n === 'NotAllowedError' || n === 'SecurityError' ? '마이크 권한이 꺼져 있어요. 브라우저 설정에서 이 사이트의 마이크를 허용한 뒤 ‘마이크 다시 켜기’를 눌러 주세요.' :
+    n === 'NotFoundError' ? '연결된 마이크를 찾지 못했어요. 버튼을 길게 눌러 불어 주세요.' :
+    '마이크를 켜지 못했어요. ‘마이크 다시 켜기’를 눌러 주세요.' + (n ? ` (${n})` : '');
+  syncUi();
+}
 
 function syncUi() {
   const live = S.phase === 'play', micOn = !!mic?.ready;

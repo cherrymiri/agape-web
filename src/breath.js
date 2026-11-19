@@ -78,8 +78,9 @@ export class BreathMic {
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });   // 브라우저 소리 처리는 모두 끔 (숨소리를 깎거나 효과음이 날 때 입력을 눌러 버림)
     } catch (e) {
-      if (e?.name !== 'OverconstrainedError' && e?.name !== 'TypeError') throw e;
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });   // 세부 조건을 못 맞추는 기기
+      if (e?.name === 'NotAllowedError' || e?.name === 'SecurityError') throw e;   // 권한 거부는 다시 시도해도 같음
+      await new Promise(r => setTimeout(r, 400));
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });   // 세부 조건을 못 맞추거나 장치가 잠깐 바빴던 경우 한 번 더
     }
     const C = window.AudioContext || window.webkitAudioContext;
     this.ctx = new C();

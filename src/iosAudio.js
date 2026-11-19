@@ -18,7 +18,13 @@ export function speakerOut(ctx) {
   wake();
   return bus;
 }
+let held = false;
+// While a work turns its microphone on, iOS can refuse to start the mic if media playback is already running
+// ("Failed to start the audio device"). Pause the speaker route for that moment, then resume.
+export function holdSpeakers() { held = true; for (const r of routes) if (!r.fallback) r.el.pause(); }
+export function releaseSpeakers() { held = false; wake(); }
 function wake() {
+  if (held) return;
   for (const r of routes) {
     if (r.fallback || !r.el.paused) continue;
     // if the phone refuses this route, fall back to normal output (then sound needs the switch off)
