@@ -48,7 +48,9 @@ export class BreathGate {
       return;
     }
     const level = this.level = f.db - this.floor, g = this.gateDb;
-    const breathy = f.periodicity < .62 && f.flatness > .06;
+    // 숨 = 음정이 없는 소리. 마이크에 직접 불면 낮은 '웅—' 바람 소리(평탄도 낮음)가 대부분이라
+    // 평탄도가 낮아도 주기성이 확실히 낮으면 숨으로 인정. 말소리(모음)는 주기성이 높아 그대로 걸러짐
+    const breathy = f.periodicity < .55 || (f.periodicity < .62 && f.flatness > .06);
     const raw = breathy && level > (this.on ? g - 5 : g);
     if (raw) { this.above += dt; this.below = 0; } else { this.below += dt; this.above = 0; }
     if (!this.on && this.above > .09) this.on = true;
@@ -68,28 +70,24 @@ export class BreathMic {
   static async alreadyGranted() {
     try { return (await navigator.permissions.query({ name: 'microphone' })).state === 'granted'; } catch { return false; }
   }
-  // iOS Safari: 오디오 컨텍스트는 터치 이벤트 안에서(첫 await 전에) 만들고 깨워야 함.
-  // 그래서 권한 요청보다 먼저 만들고, 깨우기 결과는 나중에 기다림.
+  // 순서는 잘 작동하는 EROS와 같게: 마이크 권한 → 오디오 컨텍스트 → 분석기.
+  // (오디오를 먼저 켜 두면 마이크가 켜질 때 기기 오디오 설정이 바뀌면서 입력이 무음이 되는 경우가 있음)
   async start() {
     if (this.ready) return;
-    const C = window.AudioContext || window.webkitAudioContext;
-    if (!this.ctx || this.ctx.state === 'closed') this.ctx = new C();
-    const woke = this.ctx.resume?.().catch(() => {});
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 }, video: false });
+        audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false } });   // 에코 제거로 효과음이 마이크에 되먹임되지 않게
     } catch (e) {
-      if (e?.name !== 'OverconstrainedError' && e?.name !== 'TypeError') { this.ctx.close?.()?.catch?.(() => {}); this.ctx = null; throw e; }
+      if (e?.name !== 'OverconstrainedError' && e?.name !== 'TypeError') throw e;
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });   // 세부 조건을 못 맞추는 기기
     }
-    await Promise.race([woke, new Promise(r => setTimeout(r, 1200))]);
+    const C = window.AudioContext || window.webkitAudioContext;
+    this.ctx = new C();
+    await Promise.race([this.ctx.resume?.().catch(() => {}), new Promise(r => setTimeout(r, 1200))]);   // 못 깨어나면 다음 터치 때 wake()
     this.an = this.ctx.createAnalyser();
     this.an.fftSize = 2048; this.an.smoothingTimeConstant = 0;
     this.src = this.ctx.createMediaStreamSource(this.stream);
-    this.src.connect(this.an);
-    // Safari는 출력까지 이어지지 않은 노드를 처리하지 않을 수 있어 음량 0으로 출력에 연결 (소리는 나지 않음)
-    this.mute = this.ctx.createGain(); this.mute.gain.value = 0;
-    this.an.connect(this.mute).connect(this.ctx.destination);
+    this.src.connect(this.an);                       // 출력(스피커)에는 연결하지 않음
     this.t = new Float32Array(this.an.fftSize);
     this.f = new Float32Array(this.an.frequencyBinCount);
     this.gate.reset();
@@ -109,6 +107,6 @@ export class BreathMic {
   stop() {
     this.stream?.getTracks().forEach(t => t.stop());
     this.ctx?.close?.()?.catch?.(() => {});
-    this.stream = this.ctx = this.an = this.src = this.mute = null; this.ready = false; this.gate.reset();
+    this.stream = this.ctx = this.an = this.src = null; this.ready = false; this.gate.reset();
   }
 }
