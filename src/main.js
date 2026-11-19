@@ -155,12 +155,13 @@ function breath(dt) {
 // ─── 조작 ────────────────────────────────────────────
 function hint(t) { const e = $('hint'); if (t) e.textContent = t; e.classList.toggle('on', !!t); }
 
+let micRetryAt = 0;
 async function startMic(fromClick) {
   if (S.micBusy) return;
   if (!BreathMic.supported()) return micFail();
   mic ||= new BreathMic(+$('sens').value / 100);
-  S.micBusy = true; $('micBtn').hidden = true; hint('');
-  try { await mic.start(); S.micDenied = false; if (S.up && !S.blown) hint('마이크에 ‘후—’ 하고 불어 보세요'); $('micState').textContent = '마이크 켜짐. 소리는 이 기기 안에서만 처리되고 저장되지 않습니다.'; }
+  S.micBusy = true; $('micBtn').hidden = true; if (fromClick) hint('');
+  try { await mic.start(); S.micDenied = false; if (S.up && !S.blown && !S.flowersSeen) hint('마이크에 ‘후—’ 하고 불어 보세요'); $('micState').textContent = '마이크 켜짐. 소리는 이 기기 안에서만 처리되고 저장되지 않습니다.'; }
   catch (e) { console.warn(e); micFail(); }
   S.micBusy = false; syncUi();
 }
@@ -294,6 +295,10 @@ const camAt = new THREE.Vector3(), haloTmp = new THREE.Vector3();
 function step(dt) {
   S.time += dt;
   mic?.update(dt);
+  // 체험 도중 마이크 입력이 끊기면(이어폰 연결 변화, 효과음 재생 중 기기 오디오 재설정 등) 스스로 다시 연결
+  if (mic?.stuck && !S.micBusy && performance.now() - micRetryAt > 4000) {
+    micRetryAt = performance.now(); console.warn('mic stuck → reconnect'); mic.stop(); startMic();
+  }
   S.lift += ((S.up ? 1 : 0) - S.lift) * Math.min(1, dt * 3.1);
   if (Math.abs((S.up ? 1 : 0) - S.lift) < .002) S.lift = S.up ? 1 : 0;
 

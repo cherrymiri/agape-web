@@ -76,7 +76,7 @@ export class BreathMic {
     if (this.ready) return;
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false } });   // 에코 제거로 효과음이 마이크에 되먹임되지 않게
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });   // 브라우저 소리 처리는 모두 끔 (숨소리를 깎거나 효과음이 날 때 입력을 눌러 버림)
     } catch (e) {
       if (e?.name !== 'OverconstrainedError' && e?.name !== 'TypeError') throw e;
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });   // 세부 조건을 못 맞추는 기기
@@ -91,6 +91,7 @@ export class BreathMic {
     this.t = new Float32Array(this.an.fftSize);
     this.f = new Float32Array(this.an.frequencyBinCount);
     this.gate.reset();
+    this.deadT = 0; this.offT = 0; this.chkT = 0;
     this.ready = true;
   }
   /** 화면 잠금·탭 전환·전화 등으로 멈춘 오디오를 다시 깨움. 터치 이벤트 안에서 부르면 iOS에서도 확실히 깨어남 */
@@ -98,11 +99,27 @@ export class BreathMic {
   /** 마이크 트랙이 끊겼는지 (iOS는 백그라운드로 가면 트랙을 끊기도 함) */
   get lost() { return this.ready && this.stream?.getAudioTracks().every(t => t.readyState === 'ended'); }
   get running() { return this.ready && this.ctx?.state === 'running'; }
+  /** 체험 도중 마이크가 죽었는지: 트랙 끊김·음소거, 완전한 무음(실제 마이크는 0이 나오지 않음), 오디오가 계속 멈춤 */
+  get stuck() {
+    if (!this.ready) return false;
+    const tr = this.stream?.getAudioTracks()[0];
+    return !tr || tr.readyState === 'ended' || this.deadT > 2.5 || this.offT > 3;
+  }
   update(dt) {
-    if (!this.ready || this.ctx.state !== 'running') { this.gate.on = false; this.gate.strength = 0; this.gate.level = 0; return; }
+    if (!this.ready) return;
+    dt = Math.min(dt, .1);
+    // 1초마다 상태 점검: 멈춘 오디오는 다시 깨움 (효과음 재생·이어폰 연결 변화 등으로 멈추는 경우)
+    if ((this.chkT += dt) > 1) { this.chkT = 0; if (this.ctx.state !== 'running' && this.ctx.state !== 'closed') this.ctx.resume().catch(() => {}); }
+    if (this.ctx.state !== 'running') { this.offT += dt; this.gate.on = false; this.gate.strength = 0; this.gate.level = 0; return; }
+    this.offT = 0;
     this.an.getFloatTimeDomainData(this.t);
     this.an.getFloatFrequencyData(this.f);
-    this.gate.push(analyzeFrame(this.t, this.f, this.ctx.sampleRate, this.an.fftSize), Math.min(dt, .1));
+    const fr = analyzeFrame(this.t, this.f, this.ctx.sampleRate, this.an.fftSize);
+    const tr = this.stream.getAudioTracks()[0];
+    // 완전한 무음이거나, 같은 소리 조각이 그대로 반복되면(입력이 더 이상 들어오지 않음) 죽은 것으로 봄
+    const t = this.t, sig = t[0] + t[97] * 3 + t[511] * 7 + t[1500] * 11, same = sig === this.sig; this.sig = sig;
+    this.deadT = fr.rms < 1e-6 || same || tr?.muted ? this.deadT + dt : 0;
+    this.gate.push(fr, dt);
   }
   stop() {
     this.stream?.getTracks().forEach(t => t.stop());
