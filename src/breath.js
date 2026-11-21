@@ -1,3 +1,4 @@
+import { setMicActive } from './iosAudio.js';
 // 숨소리 감지. 마이크 신호는 이 파일 안에서 수치로만 계산되고 저장·전송되지 않습니다.
 // 숨 = 지속되고(>약 0.1초) 주변보다 크며 음정이 없는(비주기적) 넓은 대역의 소리.
 // 말소리는 성대 진동 때문에 주기성이 높아 걸러지고, 손뼉·키보드는 지속 시간에서 걸러집니다.
@@ -88,6 +89,7 @@ export class BreathMic {
     this.an = this.ctx.createAnalyser();
     this.an.fftSize = 2048; this.an.smoothingTimeConstant = 0;
     this.src = this.ctx.createMediaStreamSource(this.stream);
+    setMicActive(true);
     this.src.connect(this.an);                       // 출력(스피커)에는 연결하지 않음
     this.t = new Float32Array(this.an.fftSize);
     this.f = new Float32Array(this.an.frequencyBinCount);
@@ -124,6 +126,7 @@ export class BreathMic {
   }
   stop() {
     this.stream?.getTracks().forEach(t => t.stop());
+    setMicActive(false);
     this.ctx?.close?.()?.catch?.(() => {});
     this.stream = this.ctx = this.an = this.src = null; this.ready = false; this.gate.reset();
   }

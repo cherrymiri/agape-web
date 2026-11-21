@@ -13,7 +13,7 @@ export function speakerOut(ctx) {
   const dest = ctx.createMediaStreamDestination();
   bus.connect(dest);
   const el = new Audio(); el.srcObject = dest.stream; el.setAttribute('playsinline', '');
-  const r = { ctx, bus, el, fallback: false };
+  const r = { ctx, bus, el, dest, fallback: false, mic: false };
   routes.push(r);
   wake();
   return bus;
@@ -26,7 +26,7 @@ export function releaseSpeakers() { held = false; wake(); }
 function wake() {
   if (held) return;
   for (const r of routes) {
-    if (r.fallback || !r.el.paused) continue;
+    if (r.fallback || r.mic || !r.el.paused) continue;
     // if the phone refuses this route, fall back to normal output (then sound needs the switch off)
     r.el.play().catch((e) => { if (e && e.name === 'NotAllowedError') return; r.fallback = true; r.bus.connect(r.ctx.destination); });
   }
@@ -34,4 +34,17 @@ function wake() {
 if (IOS) {
   for (const e of ['pointerdown', 'touchstart', 'touchend', 'click', 'keydown']) window.addEventListener(e, wake, { capture: true, passive: true });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+}
+
+// While a microphone is open (AGAPE's breath), the iPhone is already in 'call' audio: the silent switch no
+// longer applies, and a media element would be sent to the quiet earpiece. So then play straight out, as EROS does.
+export function setMicActive(on) {
+  for (const r of routes) {
+    if (r.mic === on) continue;
+    r.mic = on;
+    try { r.bus.disconnect(); } catch {}
+    if (on) { r.el.pause(); r.bus.connect(r.ctx.destination); }
+    else if (r.fallback) r.bus.connect(r.ctx.destination);
+    else { r.bus.connect(r.dest); wake(); }
+  }
 }
