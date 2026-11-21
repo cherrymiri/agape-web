@@ -38,11 +38,14 @@ if (IOS) {
 
 // While a microphone is open (AGAPE's breath), the iPhone is already in 'call' audio: the silent switch no
 // longer applies, and a media element would be sent to the quiet earpiece. So then play straight out, as EROS does.
+const MIC_LIFT = 3.2;   // about +10 dB
 export function setMicActive(on) {
   for (const r of routes) {
     if (r.mic === on) continue;
     r.mic = on;
     try { r.bus.disconnect(); } catch {}
+    // iPhone plays quieter while the mic is open (it switches to 'call' volume), so lift the mix to make up for it
+    r.bus.gain.setTargetAtTime(on ? MIC_LIFT : 1, r.ctx.currentTime, 0.05);
     if (on) { r.el.pause(); r.bus.connect(r.ctx.destination); }
     else if (r.fallback) r.bus.connect(r.ctx.destination);
     else { r.bus.connect(r.dest); wake(); }
