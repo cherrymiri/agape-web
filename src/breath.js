@@ -39,7 +39,7 @@ export function analyzeFrame(t, spec, sampleRate, fftSize) {
 
 /** 프레임 특징 → 숨 상태. Web Audio와 분리되어 있어 합성 신호로 시험할 수 있습니다 */
 export class BreathGate {
-  constructor(sensitivity = 1) { this.sens = sensitivity; this.reset(); }
+  constructor(sensitivity = .5) { this.sens = sensitivity; this.reset(); }
   reset() { this.floor = null; this.cal = []; this.on = false; this.above = 0; this.below = 0; this.strength = 0; this.level = 0; }
   get gateDb() { return 26 - 18 * this.sens; }         // 감도 0→주변+26dB, 1→주변+8dB
   push(f, dt) {

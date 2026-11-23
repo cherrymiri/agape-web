@@ -135,11 +135,11 @@ const S = {
   endT: 0, exitT: 0, quietT: 0, readyT: 0, noteT: -1, playT: 0, noMic: !!window.AGAPE_NO_MIC,
 };
 let mic = null, garden = null;
-// 전시장 소음을 고려해 마이크 감도 기본값은 최대(100). 예전에 저장된 값에도 한 번만 적용하고, 이후 직접 바꾼 값은 유지
+// 마이크 감도 기본값 50 (100은 조용한 곳에서도 저절로 비눗방울이 나옴). 예전에 저장된 값에도 한 번만 적용하고, 이후 직접 바꾼 값은 유지
 const sens = (() => { try {
-  if (!localStorage.getItem('agape.sens-v2')) { localStorage.removeItem('agape.sens'); localStorage.setItem('agape.sens-v2', '1'); }
-  return +(localStorage.getItem('agape.sens') ?? 100);
-} catch { return 100; } })();
+  if (!localStorage.getItem('agape.sens-v3')) { localStorage.removeItem('agape.sens'); localStorage.setItem('agape.sens-v3', '1'); }
+  return +(localStorage.getItem('agape.sens') ?? 50);
+} catch { return 50; } })();
 $('sens').value = sens;
 
 function breath(dt) {
