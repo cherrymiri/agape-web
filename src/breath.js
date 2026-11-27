@@ -41,7 +41,9 @@ export function analyzeFrame(t, spec, sampleRate, fftSize) {
 export class BreathGate {
   constructor(sensitivity = .5) { this.sens = sensitivity; this.reset(); }
   reset() { this.floor = null; this.cal = []; this.on = false; this.above = 0; this.below = 0; this.strength = 0; this.level = 0; }
-  get gateDb() { return 26 - 18 * this.sens; }         // 감도 0→주변+26dB, 1→주변+8dB
+  // 감도 0→주변+26dB, 1(=슬라이더 100)→주변+8dB. 100 넘게(최대 150) 올리면 → 주변+3dB까지 더 예민하게
+  // (마이크 소리가 작게 들어오는 이어폰용. 0~100 구간은 예전과 같아서 이미 맞춰 둔 값은 그대로 의미가 같음)
+  get gateDb() { return this.sens <= 1 ? 26 - 18 * this.sens : 8 - 10 * (this.sens - 1); }
   push(f, dt) {
     if (this.floor === null) {                         // 시작 후 0.6초: 주변 소음 측정
       this.cal.push(f.db);
@@ -51,7 +53,9 @@ export class BreathGate {
     const level = this.level = f.db - this.floor, g = this.gateDb;
     // 숨 = 음정이 없는 소리. 마이크에 직접 불면 낮은 '웅—' 바람 소리(평탄도 낮음)가 대부분이라
     // 평탄도가 낮아도 주기성이 확실히 낮으면 숨으로 인정. 말소리(모음)는 주기성이 높아 그대로 걸러짐
-    const breathy = f.periodicity < .55 || (f.periodicity < .62 && f.flatness > .06);
+    // 100 넘는 감도에서는 작고 약한 입김(음정 판별이 흔들리는 소리)도 숨으로 받아 줌
+    const extra = Math.max(0, this.sens - 1) * .2;
+    const breathy = f.periodicity < .55 + extra || (f.periodicity < .62 + extra && f.flatness > .06);
     const raw = breathy && level > (this.on ? g - 5 : g);
     if (raw) { this.above += dt; this.below = 0; } else { this.below += dt; this.above = 0; }
     if (!this.on && this.above > .09) this.on = true;
